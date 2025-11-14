@@ -10,15 +10,20 @@
         <table class="table table-striped table-hover bg-light text-center" style="border-radius: 0.75rem; overflow: hidden;">
             <thead class="table-dark">
                 <tr>
+                    <th scope="col">{% if request.session.language == 'en' %}Name{% else %}Nome{% endif %}</th>
                     <th scope="col">{% if request.session.language == 'en' %}Model Used{% else %}Modelo Utilizado{% endif %}</th>
                     <th scope="col">{% if request.session.language == 'en' %}Simulation Date{% else %}Data da Simulação{% endif %}</th>
-                    <th scope="col">{% if request.session.language == 'en' %}Report{% else %}Relatório{% endif %}</th>
+                    <th scope="col">{% if request.session.language == 'en' %}Actions{% else %}Ações{% endif %}</th>
                 </tr>
             </thead>
             <tbody id='simulation-list-container'>
                 {% comment %} Loop through the items on the current page {% endcomment %}
                 {% for simulation in page_obj %}
                 <tr id="simulation-{{ simulation.id }}">
+                    <td class="align-middle">
+                        <span class="simulation-name" data-id="{{ simulation.id }}">{{ simulation.name }}</span>
+                        <input type="text" class="form-control form-control-sm d-none" value="{{ simulation.name }}">
+                    </td>
                     <td class="align-middle">{{ simulation.get_model_type_display }}</td>
                     <td class="align-middle">{{ simulation.criado_em|date:"d/m/Y H:i" }}</td>
                     <td class="align-middle">
@@ -150,6 +155,28 @@
         return await response.json();
     }
 
+    async function updateSimulationName(simulationId, newName) {
+        const url = `/financial_options/api/update_simulation_name/`;
+        const csrftoken = getCookie('csrftoken');
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ id: simulationId, name: newName })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Server error');
+        }
+
+        return await response.json();
+    }
+
     function initializePage() {
         console.log("Script initialized.");
         const container = document.getElementById('simulations-container');
@@ -181,6 +208,66 @@
                 } catch (error) {
                     console.error('Error:', error);
                     alert(`Could not delete the simulation: ${error.message}`);
+                }
+            }
+        });
+
+        container.addEventListener('dblclick', (event) => {
+            const nameSpan = event.target.closest('.simulation-name');
+            if (nameSpan) {
+                const td = nameSpan.parentElement;
+                const input = td.querySelector('input');
+                
+                nameSpan.classList.add('d-none');
+                input.classList.remove('d-none');
+                input.focus();
+                input.select();
+            }
+        });
+
+        container.addEventListener('focusout', (event) => {
+            const input = event.target;
+            if (input.tagName === 'INPUT' && input.classList.contains('form-control')) {
+                const td = input.parentElement;
+                const nameSpan = td.querySelector('.simulation-name');
+                const simulationId = nameSpan.dataset.id;
+                const originalName = nameSpan.textContent;
+                const newName = input.value.trim();
+
+                if (newName && newName !== originalName) {
+                    updateSimulationName(simulationId, newName)
+                        .then(data => {
+                            if (data.status === 'success') {
+                                nameSpan.textContent = newName;
+                            } else {
+                                alert('Failed to update name: ' + data.message);
+                                input.value = originalName;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error updating simulation name:', error);
+                            alert('An error occurred while updating the name.');
+                            input.value = originalName;
+                        });
+                } else {
+                    input.value = originalName;
+                }
+
+                input.classList.add('d-none');
+                nameSpan.classList.remove('d-none');
+            }
+        });
+
+        container.addEventListener('keydown', (event) => {
+            const input = event.target;
+            if (input.tagName === 'INPUT' && input.classList.contains('form-control')) {
+                if (event.key === 'Enter') {
+                    input.blur();
+                } else if (event.key === 'Escape') {
+                    const td = input.parentElement;
+                    const nameSpan = td.querySelector('.simulation-name');
+                    input.value = nameSpan.textContent;
+                    input.blur();
                 }
             }
         });

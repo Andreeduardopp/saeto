@@ -910,7 +910,7 @@ def generalized_black_scholes_merton_view(request):
                     <li>Para uma <strong>ação que não paga dividendos</strong>, <code>b = r</code> (a taxa livre de risco).</li>
                     <li>Para uma <strong>ação que paga dividendos contínuos (q)</strong>, <code>b = r - q</code>.</li>
                     <li>Para um <strong>contrato futuro</strong>, <code>b = 0</code>.</li>
-                    <li>Para uma <strong>opção de moeda</strong>, <code>b = r - r_f</code> (onde r_f é a taxa de juros estrangeira).</li>
+                    <li>Para uma <strong>opção de moeda</strong>, <code>b = r - rf</code> (onde rf é a taxa de juros estrangeira).</li>
                 </ul>
                 """
             else:  # English
@@ -920,7 +920,7 @@ def generalized_black_scholes_merton_view(request):
                     <li>For a <strong>non-dividend-paying stock</strong>, <code>b = r</code> (the risk-free rate).</li>
                     <li>For a <strong>stock paying a continuous dividend (q)</strong>, <code>b = r - q</code>.</li>
                     <li>For a <strong>futures contract</strong>, <code>b = 0</code>.</li>
-                    <li>For a <strong>currency option</strong>, <code>b = r - r_f</code> (where r_f is the foreign risk-free rate).</li>
+                    <li>For a <strong>currency option</strong>, <code>b = r - rf</code> (where rf is the foreign risk-free rate).</li>
                 </ul>
                 """
 
@@ -992,3 +992,26 @@ def generalized_black_scholes_merton_view(request):
         except Exception as e:
             return JsonResponse({'error': str(e)})
 
+
+@login_required(login_url='/admin/login/')
+@require_POST
+def update_simulation_name(request):
+    try:
+        data = json.loads(request.body)
+        simulation_id = data.get('id')
+        new_name = data.get('name', '').strip()
+
+        if not simulation_id or not new_name:
+            return JsonResponse({'status': 'error', 'message': 'Missing data.'}, status=400)
+
+        simulation = get_object_or_404(FinantialModels, id=simulation_id, usuario=request.user)
+        simulation.name = new_name
+        simulation.save()
+
+        return JsonResponse({'status': 'success', 'message': 'Name updated successfully.'})
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON.'}, status=400)
+    except FinantialModels.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Simulation not found.'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

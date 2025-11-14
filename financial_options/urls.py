@@ -24,4 +24,5 @@ urlpatterns = [
     path('financial_options/basic_concepts/collar_strategy_simulator/', collar_strategy_simulator_view, name='collar_strategy_simulator'),
 
     path('rerun_simulation/<uuid:simulation_id>/', rerun_simulation_view, name='rerun_simulation'),
+    path('api/update_simulation_name/', update_simulation_name, name='update_simulation_name'),
 ]

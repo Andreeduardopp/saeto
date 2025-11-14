@@ -23,6 +23,7 @@ class FinantialModelsChoices(models.TextChoices):
     MONTE_CARLO_AMERICAN = 'MONTE_CARLO_AMERICAN', _('Monte-carlo American'),
 
 class FinantialModels(ModelPadrao):
+    name = models.CharField(max_length=255, default='Financial Model')
     model_type = models.CharField(max_length=100, blank=True, null=True, choices=FinantialModelsChoices.choices)
     parameters = models.JSONField(
         default=dict,
@@ -50,7 +51,7 @@ class FinantialModels(ModelPadrao):
         verbose_name_plural = "Financial Simulations"
     
     def __str__(self):
-        return f"{self.usuario or 'Unnamed'},{self.model_type} ({self.criado_em.date()})"
+        return self.name
     
     def clean(self):
         super().clean()
@@ -64,6 +65,12 @@ class FinantialModels(ModelPadrao):
                 )
 
     def save(self, *args, **kwargs):
+        from django.utils import timezone
+        if not self.name or self.name == 'Financial Model':
+            criado_em = timezone.now().strftime('%d/%m/%Y %H:%M')
+            if self.criado_em:
+                criado_em = self.criado_em.strftime('%d/%m/%Y %H:%M')
+            self.name = f"{self.get_model_type_display()} - {criado_em}"
         if self.pk is None:
             self.full_clean()
         super().save(*args, **kwargs)
