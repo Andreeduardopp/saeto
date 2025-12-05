@@ -169,6 +169,11 @@
             <img id="exerciseBoundaryPlot" class="img-fluid" alt="Fronteira de Exercício">
         </div>
     </div>
+    <div class="row">
+        <div class="col-md-6">
+            <img id="convergencePlot" class="img-fluid" alt="Fronteira de Exercício">
+        </div>
+    </div>
 </div>
 </div>
 <div class="modal fade" id="explanationModal" tabindex="-1" aria-labelledby="explanationModalLabel" aria-hidden="true">
@@ -271,6 +276,8 @@
                 loadingOverlay.hide();
                 $('#resultSectionAmerican').show();
                 $('#estimatedPriceAmerican').text(data.preco_estimado);
+                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot);
+                $('#convergencePlot').show();
                 $('#pricePlotAmerican').attr('src', 'data:image/png;base64,' + data.price_plot);
                 $('#exerciseBoundaryPlot').attr('src', 'data:image/png;base64,' + data.exercise_boundary_plot);
             },
@@ -326,6 +333,7 @@
             preco_estimado: document.getElementById('estimatedPriceAmerican').textContent,
             price_plot: document.getElementById('pricePlotAmerican').src,
             exercise_boundary_plot: document.getElementById('exerciseBoundaryPlot').src,
+            convergence_plot: document.getElementById('convergencePlot').src,
         };
     
         // 3. Prepare data payload for the server

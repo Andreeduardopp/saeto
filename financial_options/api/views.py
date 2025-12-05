@@ -660,21 +660,22 @@ def precificar_opcao_americana_view(request):
 
         try:
             # Call the calculation function with the validated data
-            option_price, S_paths, boundary = american_option_lsmc(
+            option_price, S_paths, boundary, discounted_cashflows = american_option_lsmc(
                 S0, K, T, r, sigma, num_simulacoes, num_passos, option_type
             )
             
-            # Generate plots based on the simulation results
-            price_plot_base64, boundary_plot_base64 = create_american_option_plots(
-                S_paths, boundary, option_type, num_simulacoes
+            # 2. Gera os gráficos (passando os cashflows)
+            convergence_plot_b64, paths_plot_b64, boundary_plot_b64 = create_american_option_plots(
+                S_paths, boundary, option_type, discounted_cashflows
             )
             
             # Return the results as a JSON response
             return JsonResponse({
-                'preco_estimado': f'{option_price:.4f}',
-                'price_plot': price_plot_base64,
-                'exercise_boundary_plot': boundary_plot_base64,
-            })
+                            'preco_estimado': f'{option_price:.4f}',
+                            'convergence_plot': convergence_plot_b64, # NOVO
+                            'price_plot': paths_plot_b64,
+                            'exercise_boundary_plot': boundary_plot_b64,
+                        })
         except Exception as e:
             # Log the exception for debugging purposes
             print(f"An error occurred during simulation: {e}")
