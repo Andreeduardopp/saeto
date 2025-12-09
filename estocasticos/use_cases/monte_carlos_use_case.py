@@ -143,11 +143,28 @@ class MonteCarloUseCase:
 
     def get_statistics(self):
         final_prices = self.prices[:, -1]
-        stats = {
-            "Média (Esperança)": np.mean(final_prices),
-            "Desvio Padrão": np.std(final_prices),
-            "Mínimo": np.min(final_prices),
-            "Máximo": np.max(final_prices),
-            "Retorno Médio (%)": (np.mean(final_prices) / self.S0 - 1) * 100
+        n = len(final_prices)
+        
+        mean_val = np.mean(final_prices)
+        std_dev = np.std(final_prices, ddof=1) # ddof=1 para desvio padrão amostral
+        
+        standard_error = std_dev / np.sqrt(n)
+        z_score = 1.96
+        lower_ic = mean_val - (z_score * standard_error)
+        upper_ic = mean_val + (z_score * standard_error)
+
+        return {
+            "descriptive": {
+                "Média (Esperança)": mean_val,
+                "Desvio Padrão": std_dev,
+                "Mínimo Absoluto": np.min(final_prices),
+                "Máximo Absoluto": np.max(final_prices),
+                "Retorno Médio (%)": (mean_val / self.S0 - 1) * 100
+            },
+            "inferential": {
+                "Média Estimada": mean_val,
+                "Erro Padrão da Média": standard_error,
+                "Limite Inferior (IC 95%)": lower_ic,
+                "Limite Superior (IC 95%)": upper_ic
+            }
         }
-        return stats

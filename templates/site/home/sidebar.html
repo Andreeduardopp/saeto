@@ -56,7 +56,10 @@
                 {% if request.session.language == 'en' %}Cox-Ross-Rubinstein Models{% else %}Modelos Cox-Ross-Rubinstein{% endif %}
             </a>
             <a class="nav-link" data-url="{% url 'monte_carlo_overview' %}">
-                {% if request.session.language == 'en' %}Monte Carlo Option Models{% else %}Modelos de Precificação de Opções por Monte Carlo{% endif %}
+                {% if request.session.language == 'en' %}Monte Carlo Methods{% else %}Métodos de Monte Carlo{% endif %}
+            </a>
+            <a class="nav-link" data-url="{% url 'to_do' %}">
+                {% if request.session.language == 'en' %}Finite Difference Methods{% else %}Métodos de Diferenças Finitas{% endif %}
             </a>
         </div>
     </div>

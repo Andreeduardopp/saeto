@@ -47,13 +47,29 @@ def option_price_use_case(S0, K, T, r, sigma, num_simulacoes, option_type='call'
     # Calcular o preço da opção como a média dos payoffs descontados
     preco_opcao = np.exp(-r_dec * T) * np.mean(payoffs)
 
-    # Calcular estatísticas descritivas dos preços finais simulados
+    mean_st = np.mean(ST)
+    std_st = np.std(ST, ddof=1) 
+    n = len(ST)
+    
+    standard_error = std_st / np.sqrt(n)
+    z_score = 1.96
+    lower_ic = mean_st - (z_score * standard_error)
+    upper_ic = mean_st + (z_score * standard_error)
+
     statistics = {
-        'Média': np.mean(ST),
-        'Mediana': np.median(ST),
-        'Desvio Padrão': np.std(ST),
-        'Mínimo': np.min(ST),
-        'Máximo': np.max(ST),
+        "descriptive": {
+            'Média (ST)': mean_st,
+            'Mediana': np.median(ST),
+            'Desvio Padrão': std_st,
+            'Mínimo': np.min(ST),
+            'Máximo': np.max(ST),
+        },
+        "inferential": {
+            "Média Estimada": mean_st,
+            "Erro Padrão": standard_error,
+            "Limite Inferior (IC 95%)": lower_ic,
+            "Limite Superior (IC 95%)": upper_ic
+        }
     }
 
     return preco_opcao, ST, statistics

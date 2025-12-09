@@ -81,10 +81,47 @@
             </div>
         </div>
 
-        <h4>
-            {% if request.session.language == 'en' %}Statistics{% else %}Estatísticas Descritivas{% endif %}
-        </h4>
-        <table class="table table-bordered table-striped" id="statisticsTable"></table>
+        <div class="row">
+            <div class="col-md-6">
+                <h4>
+                    {% if request.session.language == 'en' %}Descriptive Statistics{% else %}Estatísticas Descritivas{% endif %}
+                </h4>
+                <table class="table table-bordered table-striped" id="descStatsTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>{% if request.session.language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="col-md-6">
+                <h4>
+                    {% if request.session.language == 'en' %}Inferential Statistics (Mean & CI){% else %}Estatística Inferencial (Média e IC){% endif %}
+                </h4>
+                <table class="table table-bordered table-striped" id="infStatsTable">
+                    <thead class="table-info"> <tr>
+                            <th>{% if request.session.language == 'en' %}Statistic{% else %}Estatística{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <small class="text-muted">
+                    * {% if request.session.language == 'en' %}Based on 95% Confidence Interval (Z=1.96){% else %}Baseado no Intervalo de Confiança de 95% (Z=1,96){% endif %}
+                </small>
+                <div class="alert alert-light border mt-3" role="alert" style="font-size: 0.9rem; line-height: 1.4;">
+                    <strong>{% if request.session.language == 'en' %}Interpretation:{% else %}Interpretação:{% endif %}</strong>
+                    {% if request.session.language == 'en' %}
+                        If this experiment (sample size n) were performed other times, in 95% of cases it would tend to produce an average price contained within this interval.
+                    {% else %}
+                        Se esse experimento (amostra de tamanho n) fosse realizado outras vezes, em 95% dos casos ele tenderia a produzir um preço médio contido nesse intervalo.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -94,7 +131,6 @@
         const form = $('#monteCarloForm');
         const btn = form.find('button');
         
-        // Feedback visual de carregamento
         btn.prop('disabled', true).text('Processando...');
         
         $.ajax({
@@ -104,35 +140,33 @@
             success: function(data) {
                 $('#resultSection').fadeIn();
                 
-                // Preencher gráficos
                 $('#pricePlot').attr('src', 'data:image/png;base64,' + data.price_plot);
                 $('#distributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
-                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot); // NOVO
+                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot);
             
-                // Exibir estatísticas
-                const statsTable = $('#statisticsTable');
-                statsTable.empty();
-                
-                // Cabeçalho da tabela
-                statsTable.append('<thead class="table-dark"><tr><th>Métrica</th><th>Valor</th></tr></thead>');
-                const tbody = $('<tbody></tbody>');
-                
-                for (const [key, value] of Object.entries(data.statistics)) {
-                    // Formatação bonita para números
-                    let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
-                    tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
+                function fillTable(tableId, dataObj) {
+                    const tbody = $(tableId + ' tbody');
+                    tbody.empty();
+                    for (const [key, value] of Object.entries(dataObj)) {
+                        let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                        if(key.includes("Limite") || key.includes("Bound")) {
+                            displayValue = `<strong>${displayValue}</strong>`;
+                        }
+                        tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
+                    }
                 }
-                statsTable.append(tbody);
+
+                fillTable('#descStatsTable', data.stats_descriptive);
+                fillTable('#infStatsTable', data.stats_inferential);
             },
             error: function(xhr) {
                 let msg = "Erro desconhecido";
                 if(xhr.responseJSON && xhr.responseJSON.error) {
                     msg = xhr.responseJSON.error;
                 }
-                alert("Erro na simulação: " + msg);
+                alert("Erro: " + msg);
             },
             complete: function() {
-                // Restaurar botão
                 btn.prop('disabled', false).text('{% if request.session.language == "en" %}Run Simulation{% else %}Executar Simulação{% endif %}');
             }
         });

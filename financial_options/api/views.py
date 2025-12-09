@@ -508,7 +508,6 @@ def cox_ross_rubinstein_view(request):
 def precificar_opcao_view(request):
     if request.method == 'POST':
         errors = {}
-        # Captura e valida os dados manualmente
         try:
             S0 = float(request.POST.get('S0'))
             if S0 <= 0.0:
@@ -567,13 +566,12 @@ def precificar_opcao_view(request):
 
             price_plot_base64, distribution_plot_base64 = create_plots(ST_array)
 
-            formatted_stats = {k: f"{v:.4f}" for k, v in statistics.items()}
-
             return JsonResponse({
                 'preco_estimado': f'{preco_opcao:.4f}',
                 'price_plot': price_plot_base64,
                 'distribution_plot': distribution_plot_base64,
-                'statistics': formatted_stats,
+                'stats_descriptive': statistics['descriptive'], 
+                'stats_inferential': statistics['inferential'], 
             })
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)

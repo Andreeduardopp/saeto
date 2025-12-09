@@ -94,10 +94,47 @@
             <img id="distributionPlot" class="img-fluid" alt="Distribuição dos Preços Finais">
         </div>
     </div>
-    <h4>
-        {% if language == 'en' %}Statistics (of Final Prices):{% else %}Estatísticas Descritivas (dos Preços Finais):{% endif %}
-    </h4>
-    <table class="table table-bordered" id="statisticsTable"></table>
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <h4>
+                {% if language == 'en' %}Descriptive Statistics (Asset Price ST){% else %}Estatísticas Descritivas (Ativo ST){% endif %}
+            </h4>
+            <table class="table table-bordered table-striped" id="descStatsTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>{% if language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
+                        <th>{% if language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="col-md-6">
+            <h4>
+                {% if language == 'en' %}Inferential Statistics (95% CI){% else %}Estatística Inferencial (IC 95%){% endif %}
+            </h4>
+            <table class="table table-bordered table-striped" id="infStatsTable">
+                <thead class="table-info">
+                    <tr>
+                        <th>{% if language == 'en' %}Statistic{% else %}Estatística{% endif %}</th>
+                        <th>{% if language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <div class="alert alert-light border mt-3" role="alert" style="font-size: 0.9rem; line-height: 1.4;">
+                <strong>{% if language == 'en' %}Interpretation:{% else %}Interpretação:{% endif %}</strong>
+                {% if language == 'en' %}
+                    If this simulation (sample size n) were repeated multiple times, in 95% of cases the calculated mean asset price would fall within this interval.
+                {% else %}
+                    Se essa simulação (amostra de tamanho n) fosse realizada outras vezes, em 95% dos casos ela tenderia a produzir um preço médio do ativo contido nesse intervalo.
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 </div>
 <!-- Explanation Modal -->
@@ -197,15 +234,20 @@
                 $('#estimatedPrice').text(data.preco_estimado);
                 $('#pricePlot').attr('src', 'data:image/png;base64,' + data.price_plot);
                 $('#distributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
-            
-                const statsTable = $('#statisticsTable');
-                statsTable.empty();
-                statsTable.append('<thead><tr><th>Estatística</th><th>Valor</th></tr></thead>');
-                const tbody = $('<tbody></tbody>');
-                for (const [key, value] of Object.entries(data.statistics)) {
-                    tbody.append(`<tr><td>${key}</td><td>${value}</td></tr>`);
-                }
-                statsTable.append(tbody);
+                function fillTable(tableId, dataObj) {
+                        const tbody = $(tableId + ' tbody');
+                        tbody.empty();
+                        for (const [key, value] of Object.entries(dataObj)) {
+                            let displayValue = (!isNaN(parseFloat(value)) && isFinite(value)) ? parseFloat(value).toFixed(4) : value;
+                            
+                            if(key.includes("Limite") || key.includes("Limit")) {
+                                displayValue = `<strong>${displayValue}</strong>`;
+                            }
+                            tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
+                        }
+                    }
+                fillTable('#descStatsTable', data.stats_descriptive);
+                fillTable('#infStatsTable', data.stats_inferential);
             },
             error: function(xhr, status, error) {
                 let errorMessage = "Erro na simulação. Por favor, verifique os dados inseridos.";
@@ -252,7 +294,7 @@
         };
     
         // 2. Collect Results from the results section
-        const statsTable = document.getElementById('statisticsTable');
+        const statsTable = document.getElementById('descStatsTable');
         const statsRows = statsTable.querySelectorAll('tbody tr');
         const statistics = {};
         statsRows.forEach(row => {

@@ -213,14 +213,15 @@ def monte_carlo_view(request):
             distribution_plot = simulator.get_final_price_distribution()
             convergence_plot = simulator.plot_convergence() # NOVO
             
-            stats = simulator.get_statistics()
+            all_stats = simulator.get_statistics()
 
             return JsonResponse(
                 {
                     "price_plot": price_plot,
                     "distribution_plot": distribution_plot,
                     "convergence_plot": convergence_plot, # NOVO
-                    "statistics": stats,
+                    "stats_descriptive": all_stats['descriptive'], # Separado
+                    "stats_inferential": all_stats['inferential'], # Separado
                 }
             )
         except Exception as e:
