@@ -61,22 +61,30 @@
     </form>
 
     <!-- Result Section -->
-    <div class="result-section" id="resultSection" style="display: none;">
+<div class="result-section" id="resultSection" style="display: none;">
         <h3>
             {% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}
         </h3>
-        <div class="row">
+        
+        <div class="row mb-4">
             <div class="col-md-6">
-                <img id="pricePlot" class="img-fluid" alt="Gráfico de Preço">
+                <img id="pricePlot" class="img-fluid border rounded" alt="Gráfico de Preço">
             </div>
             <div class="col-md-6">
-                <img id="distributionPlot" class="img-fluid" alt="Distribuição dos Preços Finais">
+                <img id="distributionPlot" class="img-fluid border rounded" alt="Distribuição dos Preços Finais">
             </div>
         </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12 text-center">
+                <img id="convergencePlot" class="img-fluid border rounded" style="max-width: 80%;" alt="Gráfico de Convergência">
+            </div>
+        </div>
+
         <h4>
             {% if request.session.language == 'en' %}Statistics{% else %}Estatísticas Descritivas{% endif %}
         </h4>
-        <table class="table table-bordered" id="statisticsTable"></table>
+        <table class="table table-bordered table-striped" id="statisticsTable"></table>
     </div>
 </div>
 
@@ -84,24 +92,48 @@
 <script>
     function submitMonteCarloForm() {
         const form = $('#monteCarloForm');
+        const btn = form.find('button');
+        
+        // Feedback visual de carregamento
+        btn.prop('disabled', true).text('Processando...');
+        
         $.ajax({
             url: form.attr('action'),
             method: 'POST',
             data: form.serialize(),
             success: function(data) {
-                $('#resultSection').show();
+                $('#resultSection').fadeIn();
+                
+                // Preencher gráficos
                 $('#pricePlot').attr('src', 'data:image/png;base64,' + data.price_plot);
                 $('#distributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
+                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot); // NOVO
             
                 // Exibir estatísticas
                 const statsTable = $('#statisticsTable');
                 statsTable.empty();
+                
+                // Cabeçalho da tabela
+                statsTable.append('<thead class="table-dark"><tr><th>Métrica</th><th>Valor</th></tr></thead>');
+                const tbody = $('<tbody></tbody>');
+                
                 for (const [key, value] of Object.entries(data.statistics)) {
-                    statsTable.append(`<tr><th>${key}</th><td>${value.toFixed(2)}</td></tr>`);
+                    // Formatação bonita para números
+                    let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                    tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
                 }
+                statsTable.append(tbody);
             },
-            error: function(error) {
-                alert("Erro na simulação: " + error);
+            error: function(xhr) {
+                let msg = "Erro desconhecido";
+                if(xhr.responseJSON && xhr.responseJSON.error) {
+                    msg = xhr.responseJSON.error;
+                }
+                alert("Erro na simulação: " + msg);
+            },
+            complete: function() {
+                // Restaurar botão
+                btn.prop('disabled', false).text('{% if request.session.language == "en" %}Run Simulation{% else %}Executar Simulação{% endif %}');
             }
         });
     }

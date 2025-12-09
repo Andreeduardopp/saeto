@@ -187,30 +187,44 @@ def random_walk_view(request):
     return render(request, "random_walk_visualization.html")
 
 
+from django.http import JsonResponse
+from django.shortcuts import render
+# Lembre-se de importar sua classe MonteCarloUseCase corretamente
+
 def monte_carlo_view(request):
     if request.method == "POST":
-        S0 = float(request.POST.get("S0", 100))
-        mu = float(request.POST.get("mu", 0.15))
-        sigma = float(request.POST.get("sigma", 0.3))
-        time_unit = request.POST.get("time_unit", "Ano")
-        num_periods = int(request.POST.get("num_periods", 10))
-        num_simulations = int(request.POST.get("num_simulations", 100))
+        try:
+            S0 = float(request.POST.get("S0", 100))
+            mu = float(request.POST.get("mu", 0.15))
+            sigma = float(request.POST.get("sigma", 0.3))
+            time_unit = request.POST.get("time_unit", "Ano")
+            num_periods = int(request.POST.get("num_periods", 10))
+            num_simulations = int(request.POST.get("num_simulations", 100))
 
-        simulator = MonteCarloUseCase(
-            S0, mu, sigma, time_unit, num_periods, num_simulations
-        )
-        prices = simulator.run_simulation()
-        price_plot = simulator.plot_simulation()
-        distribution_plot = simulator.get_final_price_distribution()
-        stats = simulator.get_statistics()
+            simulator = MonteCarloUseCase(
+                S0, mu, sigma, time_unit, num_periods, num_simulations
+            )
+            
+            # Executa simulação
+            simulator.run_simulation()
+            
+            # Gera gráficos
+            price_plot = simulator.plot_simulation()
+            distribution_plot = simulator.get_final_price_distribution()
+            convergence_plot = simulator.plot_convergence() # NOVO
+            
+            stats = simulator.get_statistics()
 
-        return JsonResponse(
-            {
-                "price_plot": price_plot,
-                "distribution_plot": distribution_plot,
-                "statistics": stats,
-            }
-        )
+            return JsonResponse(
+                {
+                    "price_plot": price_plot,
+                    "distribution_plot": distribution_plot,
+                    "convergence_plot": convergence_plot, # NOVO
+                    "statistics": stats,
+                }
+            )
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
 
     return render(request, "monte_carlo_simulation.html")
 
