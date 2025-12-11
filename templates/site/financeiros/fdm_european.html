@@ -2,8 +2,10 @@
 <div class="container mt-5">
     <h1>
         {% if language == 'en' %}Finite Difference Method (FDM){% else %}Método de Diferenças Finitas (MDF){% endif %}
-        <span class="badge bg-secondary fs-6">European Options</span>
     </h1>
+    <h2>
+        {% if language == 'en' %}European Options{% else %}Opções Europeias{% endif %}
+    </h2>  
     
     <div class="card mb-4">
         <div class="card-header">
@@ -12,9 +14,9 @@
         <div class="card-body">
             <p>
                 {% if language == 'en' %}
-                This tool prices European options by numerically solving the Black-Scholes Partial Differential Equation (PDE) using the **Crank-Nicolson** scheme. Unlike analytic formulas, FDM builds a grid of prices over time.
+                This tool prices European options by transforming the Black-Scholes PDE into the Heat Equation and solving it using an Explicit Finite Difference scheme..
                 {% else %}
-                Esta ferramenta precifica opções Europeias resolvendo numericamente a Equação Diferencial Parcial (EDP) de Black-Scholes usando o esquema **Crank-Nicolson**. Diferente de fórmulas analíticas, o MDF constrói uma malha de preços ao longo do tempo.
+                Esta ferramenta precifica opções Europeias transformando a EDP de Black-Scholes na Equação do Calor e resolvendo-a com um esquema de Diferenças Finitas Explícito.
                 {% endif %}
             </p>
         </div>
@@ -22,7 +24,7 @@
 
     <div class="text-center mb-4">
         <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#fdmExplanationModal">
-            {% if language == 'en' %}Understand the Grid{% else %}Entenda a Malha{% endif %}
+            {% if language == 'en' %}Understand the model{% else %}Entenda o método{% endif %}
         </button>
     </div>
 
@@ -135,15 +137,35 @@
         </div>
         <div class="card-body">
             <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header bg-light">{% if language == 'en' %}Estimated Price{% else %}Preço Estimado{% endif %}</div>
-                        <div class="card-body text-center">
-                            <h3 id="optionPrice">-</h3>
+                <div class="col-12">
+                    <div class="card border-primary">
+                        <div class="card-header bg-primary text-white">
+                            {% if language == 'en' %}Model Comparison: Numerical vs Analytical{% else %}Comparação de Modelos: Numérico vs Analítico{% endif %}
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-md-4 border-end">
+                                    <h6 class="text-muted">Finite Difference (FDM)</h6>
+                                    <h3 class="text-primary" id="optionPrice">-</h3>
+                                    <small class="text-muted">{% if language == 'en' %}Approximation{% else %}Aproximação{% endif %}</small>
+                                </div>
+                                <div class="col-md-4 border-end">
+                                    <h6 class="text-muted">Black-Scholes (Exact)</h6>
+                                    <h3 class="text-dark" id="bsPriceDisplay">-</h3>
+                                    <small class="text-muted">{% if language == 'en' %}Benchmark{% else %}Referência{% endif %}</small>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6 class="text-muted">{% if language == 'en' %}Absolute Error{% else %}Erro Absoluto{% endif %}</h6>
+                                    <h3 class="text-danger" id="errorDisplay">-</h3>
+                                    <small id="gridInfoDisplay" class="text-muted">-</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
+            </div>
+            <div class="row mb-4">
+                <div class="col-md-12">
                     <div class="card">
                         <div class="card-header bg-light">{% if language == 'en' %}Greeks (Approx.){% else %}Gregas (Aprox.){% endif %}</div>
                         <div class="card-body">
@@ -231,20 +253,34 @@
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">Crank-Nicolson Method</h5>
+          <h5 class="modal-title">
+            {% if language == 'en' %}Explicit Finite Difference Method{% else %}Método de Diferenças Finitas Explícito{% endif %}
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
             <p>
                 {% if language == 'en' %}
-                The Crank-Nicolson method is a finite difference method used for solving the heat equation and similar partial differential equations.
-                It is second-order accurate in both time and space.
+                The <strong>Explicit Method</strong> computes the option value at the current time step using only values known from the previous step. 
+                <br><br>
+                <strong>Key Characteristics:</strong>
+                <ul>
+                    <li><strong>Heat Equation Transformation:</strong> The model simplifies the Black-Scholes PDE by changing variables to x = ln(S/K) and tau = frac{1}{2}\sigma^2(T-t).</li>
+                    <li><strong>Conditional Stability:</strong> Unlike implicit methods, the explicit scheme requires very small time steps (Delta t) relative to spatial steps (Delta x) to converge. This is governed by the CFL condition: Delta t le 0.5 Delta x^2.</li>
+                </ul>
                 {% else %}
-                O método Crank-Nicolson é um método de diferenças finitas usado para resolver a equação do calor e EDPs similares.
-                Ele possui precisão de segunda ordem tanto no tempo quanto no espaço.
+                O <strong>Método Explícito</strong> calcula o valor da opção no passo de tempo atual usando apenas valores conhecidos do passo anterior.
+                <br><br>
+                <strong>Características Principais:</strong>
+                <ul>
+                    <li><strong>Transformação para Eq. do Calor:</strong> O modelo simplifica a EDP de Black-Scholes mudando as variáveis para x = ln(S/K) e tau = frac{1}{2}sigma^2(T-t).</li>
+                    <li><strong>Estabilidade Condicional:</strong> Diferente de métodos implícitos, o esquema explícito requer passos de tempo (Delta t) muito pequenos em relação aos passos espaciais (Delta x) para convergir. Isso é governado pela condição CFL: Delta t le 0.5 Delta x^2.</li>
+                </ul>
                 {% endif %}
             </p>
-            
+            <div class="text-center mt-3">
+                 
+            </div>
         </div>
       </div>
     </div>
@@ -272,6 +308,8 @@
             if (data.error) { alert(data.error); return; }
             
             document.getElementById('optionPrice').textContent = '$' + data.option_price;
+            document.getElementById('bsPriceDisplay').textContent =  '$' +  data.bs_price;
+            document.getElementById('errorDisplay').textContent = data.error_val;
             document.getElementById('deltaMeasure').textContent = data.greeks.delta;
             document.getElementById('gammaMeasure').textContent = data.greeks.gamma;
             document.getElementById('thetaMeasure').textContent = data.greeks.theta;

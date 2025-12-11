@@ -1039,8 +1039,11 @@ def fdm_european_view(request):
                 return JsonResponse({'error': 'All values must be positive.'})
 
             model = FDMEuropeanUseCase(S, E, r, sigma, T, option_type, N_space)
-            
+            bs_model = BlackScholesModelUseCase(S, E, r, sigma, T, option_type)
+            bs_price = bs_model.calculate_price()
             option_price = model.solve()
+            absolute_error = abs(option_price - bs_price)
+            percentage_error = (absolute_error / bs_price * 100) if bs_price != 0 else 0
             greeks = model.calculate_greeks()
             price_plot, diffusion_plot = model.get_plot_data()
             break_even = 0
@@ -1053,29 +1056,30 @@ def fdm_european_view(request):
 
             if request.session.get('language') == 'en':
                 interpretation = f"""
-                <h4>FDM Results Interpretation:</h4>
-                <p><strong>Method:</strong> Explicit Finite Difference (Heat Equation Transformation).</p>
-                <p>Theoretical Price ({type_str}): <strong>${option_price}</strong>.</p>
-                <div class="alert alert-light border">
-                    <small><strong>Grid Stability Details:</strong><br>
-                    To ensure mathematical stability (CFL Condition), the algorithm automatically divided the time into <strong>{model.M_time} steps</strong> based on your input of <strong>{N_space} space steps</strong>.</small>
+                <h4>FDM Analysis & Comparison:</h4>
+                <p><strong>Method:</strong> Explicit Finite Difference.</p>
+                <p><strong>Theoretical Price (FDM):</strong> ${option_price}</p>
+                <p><strong>Analytical Price (Black-Scholes):</strong> ${bs_price}</p>
+                <div class="alert {'alert-success' if percentage_error < 0.1 else 'alert-warning'}">
+                    <strong>Accuracy:</strong> The FDM result deviates by 
+                    <strong>{absolute_error:.6f}</strong> ({percentage_error:.4f}%) from the exact formula.
                 </div>
-                <p><strong>Delta ({greeks['delta']}):</strong> Estimated sensitivity via grid finite difference.</p>
                 """
             else:
                 interpretation = f"""
-                <h4>Interpretação (Método Diferenças Finitas):</h4>
-                <p><strong>Método:</strong> Diferenças Finitas Explícito (Transformação Eq. Calor).</p>
-                <p>Preço Teórico ({type_str}): <strong>R$ {option_price}</strong>.</p>
-                <div class="alert alert-light border">
-                    <small><strong>Detalhes de Estabilidade da Malha:</strong><br>
-                    Para garantir estabilidade matemática (Condição CFL), o algoritmo dividiu automaticamente o tempo em <strong>{model.M_time} passos</strong> baseado na sua entrada de <strong>{N_space} passos espaciais</strong>.</small>
+                <h4>Análise e Comparação FDM:</h4>
+                <p><strong>Método:</strong> Diferenças Finitas Explícito.</p>
+                <p><strong>Preço Teórico (MDF):</strong> R$ {option_price}</p>
+                <p><strong>Preço Analítico (Black-Scholes):</strong> R$ {bs_price}</p>
+                <div class="alert {'alert-success' if percentage_error < 0.1 else 'alert-warning'}">
+                    <strong>Precisão:</strong> O resultado do MDF desvia 
+                    <strong>{absolute_error:.6f}</strong> ({percentage_error:.4f}%) da fórmula exata.
                 </div>
-                <p><strong>Delta ({greeks['delta']}):</strong> Sensibilidade estimada via diferença finita na malha.</p>
                 """
-
             return JsonResponse({
                 'option_price': option_price,
+                'bs_price': bs_price, 
+                'error_val': f"{absolute_error:.6f}",
                 'greeks': greeks,
                 'price_plot': price_plot,
                 'payoff_plot': diffusion_plot, 
