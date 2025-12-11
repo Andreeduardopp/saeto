@@ -1,6 +1,7 @@
 import json
 import math
 import traceback
+from urllib import request
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
@@ -11,7 +12,7 @@ from estocasticos.use_cases.financial_options.black_sholes_use_case import Black
 from estocasticos.use_cases.financial_options.cox_ross_rubinstein_use_case import CoxRossRubinsteinUseCase
 from estocasticos.use_cases.financial_options.generalized_black_scholes_merton_use_case import GeneralizedBlackScholesMertonUseCase
 from financial_options.models import FinantialModels
-from financial_options.use_cases.generate_save_pdf import generate_and_save_pdf, generate_and_save_pdf_mcs
+from financial_options.use_cases.finite_difference_european import FDMEuropeanUseCase
 from financial_options.use_cases.option_price_use_Case import create_plots, option_price_use_case
 from financial_options.use_cases.option_price_american_use_case import create_american_option_plots, american_option_lsmc
 
@@ -56,6 +57,14 @@ def cox_ross_overview_view(request):
 @login_required(login_url='/admin/login/')
 def monte_carlo_overview_view(request):
     return render(request, 'site/financeiros/monte_carlo_overview.html', {'title': 'Monte Carlo Overview'})
+
+@login_required(login_url='/admin/login/')
+def finite_difference_overview_view(request):
+    return render(request, 'site/financeiros/finite_difference_overview.html', {'title': 'Monte Carlo Overview'})
+
+@login_required(login_url='/admin/login/')
+def european_finite_difference_view(request):
+    return render(request, "site/financeiros/european_finite_difference.html")
 
 @login_required(login_url='/admin/login/')
 def call_put_options_view(request):
@@ -1014,3 +1023,87 @@ def update_simulation_name(request):
         return JsonResponse({'status': 'error', 'message': 'Simulation not found.'}, status=404)
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+def fdm_european_view(request):
+    if request.method == 'POST':
+        try:
+            S = float(request.POST.get('asset_price', 0))
+            E = float(request.POST.get('exercise_price', 0))
+            r = float(request.POST.get('interest_rate', 0))
+            sigma = float(request.POST.get('volatility', 0))
+            T = float(request.POST.get('time_to_expiration', 0))
+            option_type = request.POST.get('option_type', 'call')
+
+            N_space = int(request.POST.get('grid_space_steps', 1000))
+            if S <= 0 or E <= 0 or T <= 0 or sigma <= 0:
+                return JsonResponse({'error': 'All values must be positive.'})
+
+            model = FDMEuropeanUseCase(S, E, r, sigma, T, option_type, N_space)
+            
+            option_price = model.solve()
+            greeks = model.calculate_greeks()
+            price_plot, diffusion_plot = model.get_plot_data()
+            break_even = 0
+            if option_type == 'call':
+                break_even = round(E + option_price, 2)
+                type_str = "Opção de Compra (Call)" if request.session.get('language') != 'en' else "Call Option"
+            else:
+                break_even = round(E - option_price, 2)
+                type_str = "Opção de Venda (Put)" if request.session.get('language') != 'en' else "Put Option"
+
+            if request.session.get('language') == 'en':
+                interpretation = f"""
+                <h4>FDM Results Interpretation:</h4>
+                <p><strong>Method:</strong> Explicit Finite Difference (Heat Equation Transformation).</p>
+                <p>Theoretical Price ({type_str}): <strong>${option_price}</strong>.</p>
+                <div class="alert alert-light border">
+                    <small><strong>Grid Stability Details:</strong><br>
+                    To ensure mathematical stability (CFL Condition), the algorithm automatically divided the time into <strong>{model.M_time} steps</strong> based on your input of <strong>{N_space} space steps</strong>.</small>
+                </div>
+                <p><strong>Delta ({greeks['delta']}):</strong> Estimated sensitivity via grid finite difference.</p>
+                """
+            else:
+                interpretation = f"""
+                <h4>Interpretação (Método Diferenças Finitas):</h4>
+                <p><strong>Método:</strong> Diferenças Finitas Explícito (Transformação Eq. Calor).</p>
+                <p>Preço Teórico ({type_str}): <strong>R$ {option_price}</strong>.</p>
+                <div class="alert alert-light border">
+                    <small><strong>Detalhes de Estabilidade da Malha:</strong><br>
+                    Para garantir estabilidade matemática (Condição CFL), o algoritmo dividiu automaticamente o tempo em <strong>{model.M_time} passos</strong> baseado na sua entrada de <strong>{N_space} passos espaciais</strong>.</small>
+                </div>
+                <p><strong>Delta ({greeks['delta']}):</strong> Sensibilidade estimada via diferença finita na malha.</p>
+                """
+
+            return JsonResponse({
+                'option_price': option_price,
+                'greeks': greeks,
+                'price_plot': price_plot,
+                'payoff_plot': diffusion_plot, 
+                'interpretation': interpretation,
+                'grid_m': model.M_time,
+                'grid_n': N_space,
+                'break_even': break_even,
+                'max_loss': option_price, 
+            })
+
+        except ValueError:
+            return JsonResponse({'error': 'Invalid numeric inputs.'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)})
+
+    else:
+        initial_data = {
+            'asset_price': 100.0,
+            'exercise_price': 100.0,
+            'time_to_expiration': 365,
+            'interest_rate': 5,
+            'volatility': 20,
+            'option_type': 'call',
+            'grid_price_steps': 100,
+            'grid_time_steps': 1000
+        }
+        context = {
+            'initial_data': initial_data,
+            'language': request.session.get('language', 'pt')
+        }
+        return render(request, "site/financeiros/fdm_european.html", context)

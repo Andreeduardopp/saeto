@@ -1,0 +1,112 @@
+<div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
+
+    <h1 class="text-3xl font-bold mb-4 text-dark">
+        {% if request.session.language == 'en' %}Finite Difference Methods{% else %}Métodos de Diferenças Finitas{% endif %}
+    </h1>
+
+    <div class="text-center mb-5">
+        <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#fdmConceptsExplanationModal">
+            {% if request.session.language == 'en' %}Methods Guide{% else %}Guia dos Métodos{% endif %}
+        </button>
+    </div>
+    
+    <div class="row w-100 justify-content-center">
+        <div class="col-12 col-md-5 mb-4">
+            <a
+               class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
+               data-url="{% url 'european_finite_difference' %}" {# TODO: Replace with your actual URL name for European FDM #}
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                <div class="card-body">
+                    <h2 class="card-title h5 mb-2 text-dark">
+                        {% if request.session.language == 'en' %}European Options (PDE){% else %}Opções Europeias (EDP){% endif %}
+                    </h2>
+                    <p class="card-text text-secondary small">
+                        {% if request.session.language == 'en' %}
+                        Solves the Black-Scholes PDE using Explicit, Implicit, or Crank-Nicolson schemes.
+                        {% else %}
+                        Resolve a EDP de Black-Scholes usando esquemas Explícitos, Implícitos ou Crank-Nicolson.
+                        {% endif %}
+                    </p>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-12 col-md-5 mb-4">
+            <a
+               class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
+               data-url="{% url 'to_do' %}" {# TODO: Replace with your actual URL name for American FDM #}
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                <div class="card-body">
+                    <h2 class="card-title h5 mb-2 text-dark">
+                        {% if request.session.language == 'en' %}American Options (SOR){% else %}Opções Americanas (SOR){% endif %}
+                    </h2>
+                    <p class="card-text text-secondary small">
+                        {% if request.session.language == 'en' %}
+                        Handles early exercise boundaries using Successive Over-Relaxation methods.
+                        {% else %}
+                        Lida com fronteiras de exercício antecipado usando métodos de Sobre-Relaxamento Sucessivo.
+                        {% endif %}
+                    </p>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="fdmConceptsExplanationModal" tabindex="-1" aria-labelledby="fdmConceptsExplanationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="fdmConceptsExplanationModalLabel">
+            {% if request.session.language == 'en' %}Guide to Finite Difference Methods{% else %}Guia dos Métodos de Diferenças Finitas{% endif %}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            
+            <h4>{% if request.session.language == 'en' %}1. European Options (The Grid){% else %}1. Opções Europeias (A Malha){% endif %}</h4>
+            <p>
+                <strong>{% if request.session.language == 'en' %}Objective:{% else %}Objetivo:{% endif %}</strong>
+                {% if request.session.language == 'en' %}
+                To solve the Black-Scholes Partial Differential Equation (PDE) by discretizing time and asset price into a grid. 
+                <br>This includes methods like:
+                <ul>
+                    <li><strong>Explicit Method:</strong> Computationally simple but requires small time steps for stability.</li>
+                    <li><strong>Implicit Method:</strong> Unconditionally stable but requires solving a system of equations at each step.</li>
+                    <li><strong>Crank-Nicolson:</strong> An average of the two, offering the best balance of stability and accuracy (2nd order).</li>
+                </ul>
+                {% else %}
+                Resolver a Equação Diferencial Parcial (EDP) de Black-Scholes discretizando o tempo e o preço do ativo em uma malha.
+                <br>Isso inclui métodos como:
+                <ul>
+                    <li><strong>Método Explícito:</strong> Computacionalmente simples, mas requer pequenos passos de tempo para estabilidade.</li>
+                    <li><strong>Método Implícito:</strong> Incondicionalmente estável, mas requer a resolução de um sistema de equações a cada passo.</li>
+                    <li><strong>Crank-Nicolson:</strong> Uma média dos dois, oferecendo o melhor equilíbrio entre estabilidade e precisão (2ª ordem).</li>
+                </ul>
+                {% endif %}
+            </p>
+            <hr>
+
+            <h4>{% if request.session.language == 'en' %}2. American Options (Early Exercise){% else %}2. Opções Americanas (Exercício Antecipado){% endif %}</h4>
+            <p>
+                <strong>{% if request.session.language == 'en' %}Objective:{% else %}Objetivo:{% endif %}</strong>
+                {% if request.session.language == 'en' %}
+                To price options that can be exercised at any time before maturity. In FDM, this transforms the PDE into a free-boundary problem.
+                <br>
+                We typically use the <strong>PSOR (Projected Successive Over-Relaxation)</strong> algorithm to check, at every node of the grid, if the option value is less than the immediate payoff (Intrinsic Value).
+                {% else %}
+                Precificar opções que podem ser exercidas a qualquer momento antes do vencimento. No MDF, isso transforma a EDP em um problema de fronteira livre.
+                <br>
+                Tipicamente utilizamos o algoritmo <strong>PSOR (Projected Successive Over-Relaxation)</strong> para verificar, em cada nó da malha, se o valor da opção é inferior ao payoff imediato (Valor Intrínseco).
+                {% endif %}
+            </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              {% if request.session.language == 'en' %}Close{% else %}Fechar{% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+</div>

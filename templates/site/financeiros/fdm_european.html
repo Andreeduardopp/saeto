@@ -1,0 +1,300 @@
+{% load static %}
+<div class="container mt-5">
+    <h1>
+        {% if language == 'en' %}Finite Difference Method (FDM){% else %}Método de Diferenças Finitas (MDF){% endif %}
+        <span class="badge bg-secondary fs-6">European Options</span>
+    </h1>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            {% if language == 'en' %}Description{% else %}Descrição{% endif %}
+        </div>
+        <div class="card-body">
+            <p>
+                {% if language == 'en' %}
+                This tool prices European options by numerically solving the Black-Scholes Partial Differential Equation (PDE) using the **Crank-Nicolson** scheme. Unlike analytic formulas, FDM builds a grid of prices over time.
+                {% else %}
+                Esta ferramenta precifica opções Europeias resolvendo numericamente a Equação Diferencial Parcial (EDP) de Black-Scholes usando o esquema **Crank-Nicolson**. Diferente de fórmulas analíticas, o MDF constrói uma malha de preços ao longo do tempo.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="text-center mb-4">
+        <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#fdmExplanationModal">
+            {% if language == 'en' %}Understand the Grid{% else %}Entenda a Malha{% endif %}
+        </button>
+    </div>
+
+    <form id="fdmForm">
+        {% csrf_token %}
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        {% if language == 'en' %}Option Parameters{% else %}Parâmetros da Opção{% endif %}
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group mb-3">
+                            <label>{% if language == 'en' %}Option Type:{% else %}Tipo de Opção:{% endif %}</label>
+                            <div class="d-flex">
+                                <div class="form-check me-4">
+                                    <input class="form-check-input" type="radio" name="option_type" id="callOption" value="call" {% if initial_data.option_type == 'call' %}checked{% endif %}>
+                                    <label class="form-check-label" for="callOption">Call</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="option_type" id="putOption" value="put" {% if initial_data.option_type == 'put' %}checked{% endif %}>
+                                    <label class="form-check-label" for="putOption">Put</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group mb-3">
+                            <label for="asset_price">{% if language == 'en' %}Underlying Asset Price (S):{% else %}Preço do Ativo (S):{% endif %}</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" id="asset_price" name="asset_price" class="form-control" min="0.01" step="0.01" value="{{ initial_data.asset_price }}" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group mb-3">
+                            <label for="exercise_price">{% if language == 'en' %}Strike Price (K):{% else %}Preço de Exercício (K):{% endif %}</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" id="exercise_price" name="exercise_price" class="form-control" min="0.01" step="0.01" value="{{ initial_data.exercise_price }}" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label for="time_to_expiration">{% if language == 'en' %}Time to Expiration (days):{% else %}Dias até Vencimento:{% endif %}</label>
+                            <input type="number" id="time_to_expiration" name="time_to_expiration" class="form-control" min="1" step="1" value="{{ initial_data.time_to_expiration }}" required>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        {% if language == 'en' %}Market Parameters{% else %}Parâmetros de Mercado{% endif %}
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group mb-3">
+                            <label for="interest_rate">{% if language == 'en' %}Risk-Free Rate (%):{% else %}Taxa Livre de Risco (%):{% endif %}</label>
+                            <div class="input-group">
+                                <input type="number" id="interest_rate" name="interest_rate" class="form-control" min="0" max="100" step="0.01" value="{{ initial_data.interest_rate }}" required>
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group mb-3">
+                            <label for="volatility">{% if language == 'en' %}Volatility (σ, %):{% else %}Volatilidade (σ, %):{% endif %}</label>
+                            <div class="input-group">
+                                <input type="number" id="volatility" name="volatility" class="form-control" min="0.1" max="200" step="0.1" value="{{ initial_data.volatility }}" required>
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <label class="small">
+                                    {% if language == 'en' %}Space Steps (N - Grid Precision){% else %}Passos Espaciais (N - Precisão da Malha){% endif %}
+                                </label>
+                                <input type="number" name="grid_space_steps" class="form-control" value="1000" min="100" max="5000" disabled>
+                                <small class="text-muted">
+                                    {% if language == 'en' %}
+                                    Time steps (M) will be calculated automatically to ensure stability.
+                                    {% else %}
+                                    Os passos de tempo (M) serão calculados automaticamente para garantir a estabilidade.
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-end mb-4">
+                    <button type="button" class="btn btn-secondary me-2" onclick="resetFdmForm()">
+                        {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-primary" id="calculateBtn" onclick="handleSubmitFDM()">
+                        {% if language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div id="loadingSpinner" class="text-center my-4" style="display: none;">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">{% if language == 'en' %}Solving Matrix...{% else %}Resolvendo Matriz...{% endif %}</p>
+    </div>
+    
+    <div id="fdmResults" class="card mb-4" style="display: none;">
+        <div class="card-header bg-success text-white">
+            {% if language == 'en' %}FDM Results{% else %}Resultados MDF{% endif %}
+        </div>
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header bg-light">{% if language == 'en' %}Estimated Price{% else %}Preço Estimado{% endif %}</div>
+                        <div class="card-body text-center">
+                            <h3 id="optionPrice">-</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header bg-light">{% if language == 'en' %}Greeks (Approx.){% else %}Gregas (Aprox.){% endif %}</div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr><td>Delta:</td><td id="deltaMeasure">-</td></tr>
+                                    <tr><td>Gamma:</td><td id="gammaMeasure">-</td></tr>
+                                    <tr><td>Theta (Daily):</td><td id="thetaMeasure">-</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header bg-light">{% if language == 'en' %}Grid Metrics{% else %}Métricas da Malha{% endif %}</div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-secondary">
+                                <tr>
+                                    <th>{% if language == 'en' %}METRIC{% else %}MÉTRICA{% endif %}</th>
+                                    <th>{% if language == 'en' %}VALUE{% else %}VALOR{% endif %}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{% if language == 'en' %}Price Steps (M){% else %}Passos de Preço (M){% endif %}</td>
+                                    <td id="gridMValue">-</td>
+                                </tr>
+                                <tr>
+                                    <td>{% if language == 'en' %}Time Steps (N){% else %}Passos de Tempo (N){% endif %}</td>
+                                    <td id="gridNValue">-</td>
+                                </tr>
+                                <tr>
+                                    <td>{% if language == 'en' %}Break-Even{% else %}Ponto de Equilíbrio{% endif %}</td>
+                                    <td id="breakEvenValue">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-light">
+                            {% if language == 'en' %}Price vs Underlying (t=0){% else %}Preço vs Ativo (t=0){% endif %}
+                        </div>
+                        <div class="card-body">
+                            <img id="priceChart" src="" class="img-fluid" alt="Chart">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-light">
+                            {% if language == 'en' %}Evolution Heatmap{% else %}Heatmap de Evolução{% endif %}
+                        </div>
+                        <div class="card-body">
+                            <img id="heatmapChart" src="" class="img-fluid" alt="Heatmap">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div id="interpretation"></div>
+                </div>
+            </div>
+            
+            <div class="text-center">
+                 <button type="button" class="btn btn-secondary" onclick="resetFdmForm()">
+                    {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="fdmExplanationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Crank-Nicolson Method</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <p>
+                {% if language == 'en' %}
+                The Crank-Nicolson method is a finite difference method used for solving the heat equation and similar partial differential equations.
+                It is second-order accurate in both time and space.
+                {% else %}
+                O método Crank-Nicolson é um método de diferenças finitas usado para resolver a equação do calor e EDPs similares.
+                Ele possui precisão de segunda ordem tanto no tempo quanto no espaço.
+                {% endif %}
+            </p>
+            
+        </div>
+      </div>
+    </div>
+</div>
+
+<script>
+    function handleSubmitFDM() {
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const resultsContainer = document.getElementById('fdmResults');
+        const form = document.getElementById('fdmForm');
+        
+        loadingSpinner.style.display = 'block';
+        resultsContainer.style.display = 'none';
+        
+        const formData = new FormData(form);
+        
+        fetch('{% url "fdm_european_api" %}', { 
+            method: 'POST',
+            body: formData,
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            loadingSpinner.style.display = 'none';
+            if (data.error) { alert(data.error); return; }
+            
+            document.getElementById('optionPrice').textContent = '$' + data.option_price;
+            document.getElementById('deltaMeasure').textContent = data.greeks.delta;
+            document.getElementById('gammaMeasure').textContent = data.greeks.gamma;
+            document.getElementById('thetaMeasure').textContent = data.greeks.theta;
+            
+            document.getElementById('gridMValue').textContent = data.grid_m;
+            document.getElementById('gridNValue').textContent = data.grid_n;
+            document.getElementById('breakEvenValue').textContent = '$' + data.break_even;
+            
+            document.getElementById('priceChart').src = 'data:image/png;base64,' + data.price_plot;
+            document.getElementById('heatmapChart').src = 'data:image/png;base64,' + data.payoff_plot;
+            
+            document.getElementById('interpretation').innerHTML = data.interpretation;
+            resultsContainer.style.display = 'block';
+            resultsContainer.scrollIntoView({ behavior: 'smooth' });
+        })
+        .catch(error => {
+            loadingSpinner.style.display = 'none';
+            alert('Error processing request');
+        });
+    }
+
+    function resetFdmForm() {
+        document.getElementById('fdmForm').reset();
+        document.getElementById('fdmResults').style.display = 'none';
+    }
+</script>
