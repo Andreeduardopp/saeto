@@ -1,0 +1,162 @@
+<div class="container mt-5">
+    {% if request.session.language == 'en' %}
+    <h1>Arithmetic Brownian Motion Simulation</h1>
+    {% else %}
+    <h1>Simulação do Movimento Browniano Aritmético</h1>
+    {% endif %}
+
+    <!-- Info alert: ABM vs GBM distinction -->
+    <div class="alert alert-info mb-4" role="alert">
+        {% if request.session.language == 'en' %}
+        <strong>Mathematical Structure — ABM:</strong>
+        The Arithmetic Brownian Motion is defined by the SDE
+        <em>dX<sub>t</sub> = μ dt + σ dW<sub>t</sub></em>, where drift <em>μ</em> and
+        volatility <em>σ</em> are <strong>absolute constants</strong> (not proportional to the current value).
+        This leads to a <strong>normal distribution</strong> for X<sub>t</sub> at any time t, with
+        E[X<sub>t</sub>] = X<sub>0</sub> + μt and Var[X<sub>t</sub>] = σ²t.
+        In contrast, GBM uses <em>dS<sub>t</sub> = μ S<sub>t</sub> dt + σ S<sub>t</sub> dW<sub>t</sub></em>,
+        where both parameters are proportional to the current price, yielding a log-normal distribution.
+        {% else %}
+        <strong>Estrutura Matemática — MBA:</strong>
+        O Movimento Browniano Aritmético é definido pela EDE
+        <em>dX<sub>t</sub> = μ dt + σ dW<sub>t</sub></em>, onde deriva <em>μ</em> e
+        volatilidade <em>σ</em> são <strong>constantes absolutas</strong> (não proporcionais ao valor atual).
+        Isso leva a uma <strong>distribuição normal</strong> para X<sub>t</sub> em qualquer tempo t, com
+        E[X<sub>t</sub>] = X<sub>0</sub> + μt e Var[X<sub>t</sub>] = σ²t.
+        Em contraste, o MBG usa <em>dS<sub>t</sub> = μ S<sub>t</sub> dt + σ S<sub>t</sub> dW<sub>t</sub></em>,
+        onde ambos os parâmetros são proporcionais ao preço atual, gerando uma distribuição log-normal.
+        {% endif %}
+    </div>
+
+    <form id="abmForm" method="post" action="{% url 'abm_simulator' %}">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="X0">
+                {% if request.session.language == 'en' %}Initial Value (X₀):{% else %}Valor Inicial (X₀):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="X0" name="X0" value="100" step="0.01" required>
+        </div>
+        <div class="form-group">
+            <label for="mu">
+                {% if request.session.language == 'en' %}Drift (μ):{% else %}Drift:{% endif %}
+            </label>
+            <input type="number" class="form-control" id="mu" name="mu" value="2.0" step="0.0001" required>
+        </div>
+        <div class="form-group">
+            <label for="sigma">
+                {% if request.session.language == 'en' %}Volatility (σ):{% else %}Volatilidade (σ):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="sigma" name="sigma" value="10.0" step="0.0001" min="0.0001"
+                required>
+        </div>
+        <div class="form-group">
+            <label for="T">
+                {% if request.session.language == 'en' %}Time Horizon (T in years):{% else %}Horizonte de Tempo (T em
+                anos):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="T" name="T" value="1" min="0.01" step="0.01" required>
+        </div>
+        <div class="form-group">
+            <label for="dt">
+                {% if request.session.language == 'en' %}Time Step (dt):{% else %}Passo de Tempo (dt):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="dt" name="dt" value="0.01" step="0.0001" min="0.0001"
+                required>
+        </div>
+        <div class="form-group">
+            <label for="n_simulations">
+                {% if request.session.language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
+            </label>
+            <input type="number" class="form-control" id="n_simulations" name="n_simulations" value="10" min="1"
+                required>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="submitAbmForm()">
+            {% if request.session.language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+        </button>
+    </form>
+
+    <!-- Result Section -->
+    <div class="result-section" id="abmResultSection" style="display: none;">
+        <h3 class="mt-4">
+            {% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}
+        </h3>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <img id="abmPathsPlot" class="img-fluid border rounded" alt="ABM Paths">
+            </div>
+            <div class="col-md-6">
+                <img id="abmDistributionPlot" class="img-fluid border rounded" alt="ABM Distribution">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <h4>
+                    {% if request.session.language == 'en' %}Statistics{% else %}Estatísticas{% endif %}
+                </h4>
+                <table class="table table-bordered table-striped" id="abmStatsTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>{% if request.session.language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <small class="text-muted">
+                    {% if request.session.language == 'en' %}
+                    Theoretical values are computed from the exact ABM moments: E[X<sub>T</sub>] = X₀ + μT and
+                    Std[X<sub>T</sub>] = σ√T.
+                    {% else %}
+                    Os valores teóricos são calculados a partir dos momentos exatos do MBA: E[X<sub>T</sub>] = X₀ + μT e
+                    Desvio[X<sub>T</sub>] = σ√T.
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script>
+    function submitAbmForm() {
+        const form = $('#abmForm');
+        const btn = form.find('button');
+
+        btn.prop('disabled', true).text('{% if request.session.language == "en" %}Processing...{% else %}Processando...{% endif %}');
+
+        $.ajax({
+            url: form.attr('action'),
+            method: 'POST',
+            data: form.serialize(),
+            success: function (data) {
+                if (data.error) {
+                    alert('{% if request.session.language == "en" %}Error: {% else %}Erro: {% endif %}' + data.error);
+                    return;
+                }
+
+                $('#abmResultSection').fadeIn();
+                $('#abmPathsPlot').attr('src', 'data:image/png;base64,' + data.paths_plot);
+                $('#abmDistributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
+
+                const tbody = $('#abmStatsTable tbody');
+                tbody.empty();
+                for (const [key, value] of Object.entries(data.statistics)) {
+                    let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                    tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
+                }
+            },
+            error: function (xhr) {
+                let msg = '{% if request.session.language == "en" %}Unknown error{% else %}Erro desconhecido{% endif %}';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    msg = xhr.responseJSON.error;
+                }
+                alert('{% if request.session.language == "en" %}Error: {% else %}Erro: {% endif %}' + msg);
+            },
+            complete: function () {
+                btn.prop('disabled', false).text('{% if request.session.language == "en" %}Run Simulation{% else %}Executar Simulação{% endif %}');
+            }
+        });
+    }
+</script>

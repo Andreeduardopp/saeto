@@ -16,6 +16,7 @@ urlpatterns = [
     path("monte-carlos", monte_carlos, name="monte_carlos"),
     path("mbg-overview", mbg_overview, name="mbg_overview"),
     path("mbg-ito", mbg_ito, name="mbg_ito"),
+    path("abm", abm, name="abm"),
     path("mbg-teoria", mbg_teoria, name="mbg_teoria"),
     path("modelo-reversao-media", modelo_reversao_media, name="modelo_reversao_media"),
     path("vizualizacao-modelos", vizualizacao_modelos, name="vizualizacao-modelos"),
@@ -44,4 +45,5 @@ urlpatterns = [
         comparacao_modelos_view,
         name="comparacao_modelos_view",
     ),
+    path("abm_simulator/", simulate_abm_view, name="abm_simulator"),
 ]

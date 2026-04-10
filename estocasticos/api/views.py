@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from estocasticos.use_cases.comparacao_modelos_use_case import ComparacaoModelosUseCase
+from estocasticos.use_cases.abm_use_case import ArithmeticBrownianMotionUseCase
 from estocasticos.use_cases.mbg_ito_use_case import GeneralizedBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
 from estocasticos.use_cases.monte_carlos_use_case import MonteCarloUseCase
@@ -46,6 +47,10 @@ def mbg_overview(request):
 
 def mbg_ito(request):
     return render(request, "site/processos-estocasticos/mbg_ito.html")
+
+
+def abm(request):
+    return render(request, "site/processos-estocasticos/abm.html")
 
 
 @login_required(login_url='/admin/login/')
@@ -312,4 +317,33 @@ def comparacao_modelos_view(request):
             return JsonResponse({"plot_image": plot_image})
         except (ValueError, TypeError) as e:
             return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
+def simulate_abm_view(request):
+    if request.method == "POST":
+        try:
+            X0 = float(request.POST.get("X0", 100))
+            mu = float(request.POST.get("mu", 2.0))
+            sigma = float(request.POST.get("sigma", 10.0))
+            T = float(request.POST.get("T", 1))
+            dt = float(request.POST.get("dt", 0.01))
+            n_simulations = int(request.POST.get("n_simulations", 10))
+
+            abm_model = ArithmeticBrownianMotionUseCase(X0, mu, sigma, T, dt, n_simulations)
+            time_grid, simulations = abm_model.simulate_paths()
+            paths_plot = abm_model.plot_paths(time_grid, simulations)
+            distribution_plot = abm_model.plot_distribution(simulations)
+            stats = abm_model.calculate_statistics(simulations)
+
+            return JsonResponse(
+                {
+                    "paths_plot": paths_plot,
+                    "distribution_plot": distribution_plot,
+                    "statistics": stats,
+                }
+            )
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
     return JsonResponse({"error": "Invalid request method"}, status=405)

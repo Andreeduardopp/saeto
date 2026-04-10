@@ -1,42 +1,64 @@
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
-        {% if request.session.language == 'en' %}Geometric Brownian motion Models{% else %}Movimento Browniano Generalizado{% endif %}
+        {% if request.session.language == 'en' %}Brownian motion Models{% else %}Movimento Browniano{% endif %}
     </h1>
 
     <div class="text-center mb-5">
-        <button class="btn btn-outline-info" type="button" data-bs-toggle="modal" data-bs-target="#conceptsExplanationModal">
+        <button class="btn btn-outline-info" type="button" data-bs-toggle="modal"
+            data-bs-target="#conceptsExplanationModal">
             {% if request.session.language == 'en' %}Models Guide{% else %}Guia dos Modelos{% endif %}
         </button>
     </div>
-    
+
     <div class="row w-100 justify-content-center">
         <div class="col-12 col-md-4 mb-4">
-            <a
-               class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
-               data-url="{% url 'monte_carlos' %}" 
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+            <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
+                data-url="{% url 'abm' %}" style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
-                        {% if request.session.language == 'en' %}Generalized Brownian Process Wiener{% else %}Processo Browniano Generalizado Wiener{% endif %} 
+                        {% if request.session.language == 'en' %}Arithmetic Brownian Motion{% else %}Movimento
+                        Browniano Aritmético{% endif %}
                     </h2>
                     <p class="card-text text-secondary small">
-                        {% if request.session.language == 'en' %}Models asset prices using a Wiener process, fundamental for understanding random walks in finance.{% else %}Modela preços de ativos usando um processo de Wiener, fundamental para entender passeios aleatórios em finanças.{% endif %}
+                        {% if request.session.language == 'en' %}Models the process with constant drift and volatility,
+                        yielding a normal distribution at every time step.{% else %}Modela o
+                        processo com deriva e volatilidade constantes, gerando uma distribuição
+                        normal em cada passo de tempo.{% endif %}
                     </p>
                 </div>
             </a>
         </div>
         <div class="col-12 col-md-4 mb-4">
-            <a
-               class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
-               data-url="{% url 'mbg_ito' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+            <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
+                data-url="{% url 'monte_carlos' %}"
+                style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
-                        {% if request.session.language == 'en' %}Generalized Brownian Process Ito{% else %}Processo Browniano Generalizado Ito{% endif %} 
+                        {% if request.session.language == 'en' %}Generalized Brownian Process{% else %}Processo
+                        Browniano Generalizado{% endif %}
                     </h2>
                     <p class="card-text text-secondary small">
-                        {% if request.session.language == 'en' %}Applies Ito's Lemma to stochastic differential equations, crucial for advanced financial modeling.{% else %}Aplica o Lema de Ito a equações diferenciais estocásticas, crucial para modelagem financeira avançada.{% endif %}
+                        {% if request.session.language == 'en' %}Models asset prices using a Wiener process, fundamental
+                        for understanding random walks in finance.{% else %}Modela preços de ativos usando um processo
+                        de Wiener, fundamental para entender passeios aleatórios em finanças.{% endif %}
+                    </p>
+                </div>
+            </a>
+        </div>
+        <div class="col-12 col-md-4 mb-4">
+            <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
+                data-url="{% url 'mbg_ito' %}" {# Replace with your actual URL name #}
+                style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                <div class="card-body">
+                    <h2 class="card-title h5 mb-2 text-dark">
+                        {% if request.session.language == 'en' %}Generalized Brownian Process Ito{% else %}Processo
+                        Browniano Generalizado Ito{% endif %}
+                    </h2>
+                    <p class="card-text text-secondary small">
+                        {% if request.session.language == 'en' %}Applies Ito's Lemma to stochastic differential
+                        equations, crucial for advanced financial modeling.{% else %}Aplica o Lema de Ito a equações
+                        diferenciais estocásticas, crucial para modelagem financeira avançada.{% endif %}
                     </p>
                 </div>
             </a>
@@ -45,43 +67,128 @@
 </div>
 
 
-<div class="modal fade" id="conceptsExplanationModal" tabindex="-1" aria-labelledby="gbmGuideModalLabel" aria-hidden="true">
+<div class="modal fade" id="conceptsExplanationModal" tabindex="-1" aria-labelledby="gbmGuideModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="gbmGuideModalLabel">
-            {% if request.session.language == 'en' %}Guide to Geometric Brownian Motion Models{% else %}Guia dos Modelos de Movimento Browniano Generalizado{% endif %}
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body text-dark">
-            
-            <h4>{% if request.session.language == 'en' %}1. Generalized Brownian Process Wiener{% else %}1. Processo Browniano Generalizado Wiener{% endif %}</h4>
-            <p>
-                <strong>{% if request.session.language == 'en' %}Concept:{% else %}Conceito:{% endif %}</strong>
-                {% if request.session.language == 'en' %}
-                The Wiener process, also known as standard Brownian motion ($W_t$), is a continuous-time stochastic process that models the random movement of particles. It is characterized by independent and normally distributed increments, with mean zero and variance equal to the time interval. In finance, it forms the basis for modeling the random component of asset prices, where the price changes are assumed to follow a random walk. A generalized Brownian process is often represented as $dX_t = \mu dt + \sigma dW_t$, where $\mu$ is the drift and $\sigma$ is the volatility.
-                {% else %}
-                O processo de Wiener, também conhecido como movimento Browniano padrão ($W_t$), é um processo estocástico de tempo contínuo que modela o movimento aleatório de partículas. É caracterizado por incrementos independentes e normalmente distribuídos, com média zero e variância igual ao intervalo de tempo. Em finanças, ele forma a base para modelar o componente aleatório dos preços dos ativos, onde as mudanças de preço são assumidas como seguindo um passeio aleatório. Um processo Browniano generalizado é frequentemente representado como $dX_t = \mu dt + \sigma dW_t$, onde $\mu$ é o drift e $\sigma$ é a volatilidade.
-                {% endif %}
-            </p>
-            <hr>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="gbmGuideModalLabel">
+                    {% if request.session.language == 'en' %}Guide to Geometric Brownian Motion Models{% else %}Guia dos
+                    Modelos de Movimento Browniano Generalizado{% endif %}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-dark">
 
-            <h4>{% if request.session.language == 'en' %}2. Generalized Brownian Process Ito{% else %}2. Processo Browniano Generalizado Ito{% endif %}</h4>
-            <p>
-                <strong>{% if request.session.language == 'en' %}Concept:{% else %}Conceito:{% endif %}</strong>
-                {% if request.session.language == 'en' %}
-                Ito's Lemma is a fundamental result in stochastic calculus that allows us to find the differential of a function of a stochastic process. When dealing with functions of a Wiener process, standard calculus rules do not apply due to the non-differentiability of the Wiener process. Ito's Lemma extends the chain rule to stochastic processes, enabling the analysis of asset prices that follow Geometric Brownian Motion. For a function $f(X_t, t)$ where $dX_t = \mu dt + \sigma dW_t$, Ito's Lemma states $df = \left(\frac{\partial f}{\partial t} + \mu \frac{\partial f}{\partial X} + \frac{1}{2}\sigma^2 \frac{\partial^2 f}{\partial X^2}\right) dt + \sigma \frac{\partial f}{\partial X} dW_t$. This is crucial for deriving models like Black-Scholes.
-                {% else %}
-                O Lema de Ito é um resultado fundamental no cálculo estocástico que nos permite encontrar o diferencial de uma função de um processo estocástico. Ao lidar com funções de um processo de Wiener, as regras de cálculo padrão não se aplicam devido à não diferenciabilidade do processo de Wiener. O Lema de Ito estende a regra da cadeia para processos estocásticos, permitindo a análise de preços de ativos que seguem o Movimento Browniano Geométrico. Para uma função $f(X_t, t)$ onde $dX_t = \mu dt + \sigma dW_t$, o Lema de Ito afirma $df = \left(\frac{\partial f}{\partial t} + \mu \frac{\partial f}{\partial X} + \frac{1}{2}\sigma^2 \frac{\partial^2 f}{\partial X^2}\right) dt + \sigma \frac{\partial f}{\partial X} dW_t$. Isso é crucial para derivar modelos como Black-Scholes.
-                {% endif %}
-            </p>
+                <!-- MathJax for rendering equations -->
+                <script>
+                    MathJax = { tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] } };
+                </script>
+                <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+                <h4>{% if request.session.language == 'en' %}1. Arithmetic Brownian Motion (ABM){% else %}1. Movimento
+                    Browniano Aritmético (MBA){% endif %}</h4>
+                <p>
+                    <strong>{% if request.session.language == 'en' %}Concept:{% else %}Conceito:{% endif %}</strong>
+                    {% if request.session.language == 'en' %}
+                    The Arithmetic Brownian Motion is defined by the stochastic differential equation:
+                    {% else %}
+                    O Movimento Browniano Aritmético é definido pela equação diferencial estocástica:
+                    {% endif %}
+                </p>
+                <p class="text-center">$$ dX_t = \mu \, dt + \sigma \, dW_t $$</p>
+                <p>
+                    {% if request.session.language == 'en' %}
+                    Here, the drift $\mu$ and volatility $\sigma$ are <strong>absolute constants</strong>,
+                    independent of the current value $X_t$. Increments are additive and identically
+                    distributed over equal time intervals. The value at any time $t$ follows a
+                    <strong>normal distribution</strong>:
+                    {% else %}
+                    Aqui, a deriva $\mu$ e a volatilidade $\sigma$ são <strong>constantes absolutas</strong>,
+                    independentes do valor atual $X_t$. Os incrementos são aditivos e identicamente
+                    distribuídos em intervalos de tempo iguais. O valor em qualquer tempo $t$ segue uma
+                    <strong>distribuição normal</strong>:
+                    {% endif %}
+                </p>
+                <p class="text-center">$$ X_t \sim \mathcal{N}\!\left(X_0 + \mu\, t,\;\; \sigma^2 t\right) $$</p>
+                <p>
+                    {% if request.session.language == 'en' %}
+                    Unlike GBM, ABM allows negative values, making it suitable for interest rates,
+                    temperature, or profit/loss in absolute terms. The key contrast with GBM is
+                    that in GBM both parameters are proportional to $S_t$:
+                    {% else %}
+                    Ao contrário do MBG, o MBA permite valores negativos, tornando-o adequado para taxas de juros,
+                    temperatura ou lucro/perda em termos absolutos. O contraste principal com o MBG é
+                    que no MBG ambos os parâmetros são proporcionais a $S_t$:
+                    {% endif %}
+                </p>
+                <p class="text-center">$$ dS_t = \mu\, S_t\, dt + \sigma\, S_t\, dW_t $$</p>
+                <hr>
+
+                <h4>{% if request.session.language == 'en' %}2. Generalized Brownian Process (Wiener){% else %}2.
+                    Processo Browniano Generalizado (Wiener){% endif %}</h4>
+                <p>
+                    <strong>{% if request.session.language == 'en' %}Concept:{% else %}Conceito:{% endif %}</strong>
+                    {% if request.session.language == 'en' %}
+                    The Wiener process, also known as standard Brownian motion $W_t$, is a continuous-time stochastic
+                    process that models random movement. It is characterised by independent, normally distributed
+                    increments with mean zero and variance equal to the time interval. A generalised Brownian process
+                    adds a constant drift and volatility:
+                    {% else %}
+                    O processo de Wiener, também conhecido como movimento Browniano padrão $W_t$, é um processo
+                    estocástico de tempo contínuo que modela movimento aleatório. É caracterizado por incrementos
+                    independentes e normalmente distribuídos, com média zero e variância igual ao intervalo de tempo.
+                    Um processo Browniano generalizado adiciona deriva e volatilidade constantes:
+                    {% endif %}
+                </p>
+                <p class="text-center">$$ dX_t = \mu \, dt + \sigma \, dW_t $$</p>
+                <p>
+                    {% if request.session.language == 'en' %}
+                    where $\mu$ is the drift and $\sigma$ is the volatility. In finance, it forms the basis for
+                    modelling the random component of asset prices, where price changes are assumed to follow
+                    a random walk.
+                    {% else %}
+                    onde $\mu$ é a deriva e $\sigma$ é a volatilidade. Em finanças, ele forma a base para modelar
+                    o componente aleatório dos preços dos ativos, onde as mudanças de preço são assumidas como
+                    seguindo um passeio aleatório.
+                    {% endif %}
+                </p>
+                <hr>
+
+                <h4>{% if request.session.language == 'en' %}3. Generalized Brownian Process (Itô){% else %}3. Processo
+                    Browniano Generalizado (Itô){% endif %}</h4>
+                <p>
+                    <strong>{% if request.session.language == 'en' %}Concept:{% else %}Conceito:{% endif %}</strong>
+                    {% if request.session.language == 'en' %}
+                    Itô's Lemma is a fundamental result in stochastic calculus that extends the chain rule to
+                    stochastic processes. For a function $f(X_t, t)$ where $dX_t = \mu\, dt + \sigma\, dW_t$,
+                    it states:
+                    {% else %}
+                    O Lema de Itô é um resultado fundamental no cálculo estocástico que estende a regra da cadeia
+                    para processos estocásticos. Para uma função $f(X_t, t)$ onde $dX_t = \mu\, dt + \sigma\, dW_t$,
+                    ele afirma:
+                    {% endif %}
+                </p>
+                <p class="text-center">
+                    $$ df = \left(\frac{\partial f}{\partial t} + \mu \frac{\partial f}{\partial X} +
+                    \frac{1}{2}\sigma^2 \frac{\partial^2 f}{\partial X^2}\right) dt + \sigma \frac{\partial f}{\partial
+                    X}\, dW_t $$
+                </p>
+                <p>
+                    {% if request.session.language == 'en' %}
+                    This is crucial for deriving models like Black-Scholes and enables the analysis of asset prices
+                    that follow Geometric Brownian Motion.
+                    {% else %}
+                    Isso é crucial para derivar modelos como Black-Scholes e permite a análise de preços de ativos
+                    que seguem o Movimento Browniano Geométrico.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    {% if request.session.language == 'en' %}Close{% else %}Fechar{% endif %}
+                </button>
+            </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-              {% if request.session.language == 'en' %}Close{% else %}Fechar{% endif %}
-          </button>
-        </div>
-      </div>
     </div>
 </div>
