@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from estocasticos.use_cases.comparacao_modelos_use_case import ComparacaoModelosUseCase
 from estocasticos.use_cases.abm_use_case import ArithmeticBrownianMotionUseCase
-from estocasticos.use_cases.mbg_ito_use_case import GeneralizedBrownianMotionUseCase
+from estocasticos.use_cases.mbg_ito_use_case import GeometricBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
 from estocasticos.use_cases.monte_carlos_use_case import MonteCarloUseCase
 from estocasticos.use_cases.random_walk_normal_use_case import RandomWalkNormalUseCase
@@ -244,7 +244,7 @@ def simulate_gbm_view(request):
         dt = float(request.POST.get("dt", 0.01))
         n_simulations = int(request.POST.get("n_simulations", 10))
 
-        gbm = GeneralizedBrownianMotionUseCase(S0, mu, sigma, T, dt, n_simulations)
+        gbm = GeometricBrownianMotionUseCase(S0, mu, sigma, T, dt, n_simulations)
         time_grid, simulations = gbm.simulate_paths()
         price_plot = gbm.plot_paths(time_grid, simulations)
         distribution_plot = gbm.plot_distribution(simulations)

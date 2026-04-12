@@ -1,74 +1,172 @@
 <div class="container mt-5">
-    <h1>Simulação do Processo Browniano Generalizado</h1>
+    {% if request.session.language == 'en' %}
+    <h1>Geometric Brownian Motion Simulation</h1>
+    {% else %}
+    <h1>Simulação do Movimento Browniano Geométrico</h1>
+    {% endif %}
+
+    <!-- Info alert: GBM mathematical structure -->
+    <div class="alert alert-info mb-4" role="alert">
+        {% if request.session.language == 'en' %}
+        <strong>Mathematical Structure — GBM (Samuelson, 1965):</strong>
+        The Geometric Brownian Motion is defined by the SDE
+        <em>dS<sub>t</sub> = μ S<sub>t</sub> dt + σ S<sub>t</sub> dW<sub>t</sub></em>, where drift <em>μ</em> and
+        volatility <em>σ</em> are <strong>proportional to the current price</strong> S<sub>t</sub>.
+        This leads to a <strong>log-normal distribution</strong> for S<sub>t</sub> at any time t, with
+        E[S<sub>t</sub>] = S<sub>0</sub>·e<sup>μt</sup> and
+        Var[S<sub>t</sub>] = S<sub>0</sub>²·e<sup>2μt</sup>·(e<sup>σ²t</sup> − 1).
+        <br><br>
+        <strong>Key property:</strong> GBM guarantees <strong>non-negative prices</strong> (limited liability),
+        making it the standard model for asset pricing. In contrast, ABM uses
+        <em>dX<sub>t</sub> = μ dt + σ dW<sub>t</sub></em>, where parameters are absolute constants,
+        yielding a normal distribution that can produce negative values.
+        {% else %}
+        <strong>Estrutura Matemática — MBG (Samuelson, 1965):</strong>
+        O Movimento Browniano Geométrico é definido pela EDE
+        <em>dS<sub>t</sub> = μ S<sub>t</sub> dt + σ S<sub>t</sub> dW<sub>t</sub></em>, onde deriva <em>μ</em> e
+        volatilidade <em>σ</em> são <strong>proporcionais ao preço atual</strong> S<sub>t</sub>.
+        Isso leva a uma <strong>distribuição log-normal</strong> para S<sub>t</sub> em qualquer tempo t, com
+        E[S<sub>t</sub>] = S<sub>0</sub>·e<sup>μt</sup> e
+        Var[S<sub>t</sub>] = S<sub>0</sub>²·e<sup>2μt</sup>·(e<sup>σ²t</sup> − 1).
+        <br><br>
+        <strong>Propriedade-chave:</strong> O MBG garante <strong>preços não-negativos</strong> (responsabilidade limitada),
+        sendo o modelo padrão para precificação de ativos. Em contraste, o MBA usa
+        <em>dX<sub>t</sub> = μ dt + σ dW<sub>t</sub></em>, onde os parâmetros são constantes absolutas,
+        gerando uma distribuição normal que pode produzir valores negativos.
+        {% endif %}
+    </div>
+
     <form id="gbmForm" method="post" action="{% url 'mbg_simulator' %}">
         {% csrf_token %}
         <div class="form-group">
-            <label for="S0">Preço Inicial (S0):</label>
-            <input type="number" class="form-control" id="S0" name="S0" value="100" min="1" step="0.01" required>
+            <label for="S0">
+                {% if request.session.language == 'en' %}Initial Price (S₀):{% else %}Preço Inicial (S₀):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="S0" name="S0" value="100" min="0.01" step="0.01" required>
         </div>
         <div class="form-group">
-            <label for="mu">Taxa de Retorno (mu):</label>
+            <label for="mu">
+                {% if request.session.language == 'en' %}Return Rate / Drift (μ):{% else %}Taxa de Retorno / Drift (μ):{% endif %}
+            </label>
             <input type="number" class="form-control" id="mu" name="mu" value="0.1" step="0.0001" required>
         </div>
         <div class="form-group">
-            <label for="sigma">Volatilidade (sigma):</label>
-            <input type="number" class="form-control" id="sigma" name="sigma" value="0.2" step="0.0001" required>
+            <label for="sigma">
+                {% if request.session.language == 'en' %}Volatility (σ):{% else %}Volatilidade (σ):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="sigma" name="sigma" value="0.2" step="0.0001" min="0.0001"
+                required>
         </div>
         <div class="form-group">
-            <label for="T">Horizonte Temporal (T em anos):</label>
+            <label for="T">
+                {% if request.session.language == 'en' %}Time Horizon (T in years):{% else %}Horizonte de Tempo (T em
+                anos):{% endif %}
+            </label>
             <input type="number" class="form-control" id="T" name="T" value="1" min="0.01" step="0.01" required>
         </div>
         <div class="form-group">
-            <label for="dt">Passo de Tempo (dt):</label>
-            <input type="number" class="form-control" id="dt" name="dt" value="0.01" step="0.0001" required>
+            <label for="dt">
+                {% if request.session.language == 'en' %}Time Step (dt):{% else %}Passo de Tempo (dt):{% endif %}
+            </label>
+            <input type="number" class="form-control" id="dt" name="dt" value="0.01" step="0.0001" min="0.0001"
+                required>
         </div>
         <div class="form-group">
-            <label for="n_simulations">Número de Simulações:</label>
-            <input type="number" class="form-control" id="n_simulations" name="n_simulations" value="10" min="1" required>
+            <label for="n_simulations">
+                {% if request.session.language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
+            </label>
+            <input type="number" class="form-control" id="n_simulations" name="n_simulations" value="10" min="1"
+                required>
         </div>
-        <button type="submit" class="btn btn-primary">Executar Simulação</button>
+        <button type="button" class="btn btn-primary" onclick="submitGbmForm()">
+            {% if request.session.language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+        </button>
     </form>
 
-    <div id="results" style="display: none;" class="mt-4">
-        <h3>Resultados da Simulação</h3>
-        <div class="row">
+    <!-- Result Section -->
+    <div class="result-section" id="gbmResultSection" style="display: none;">
+        <h3 class="mt-4">
+            {% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}
+        </h3>
+
+        <div class="row mb-4">
             <div class="col-md-6">
-                <img id="pricePlot" class="img-fluid" alt="Gráfico de Preços">
+                <img id="gbmPathsPlot" class="img-fluid border rounded" alt="GBM Paths">
             </div>
             <div class="col-md-6">
-                <img id="distributionPlot" class="img-fluid" alt="Distribuição de Preços Finais">
+                <img id="gbmDistributionPlot" class="img-fluid border rounded" alt="GBM Distribution">
             </div>
         </div>
-        <h4>Estatísticas Descritivas</h4>
-        <table class="table table-bordered" id="statisticsTable"></table>
+
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <h4>
+                    {% if request.session.language == 'en' %}Statistics{% else %}Estatísticas{% endif %}
+                </h4>
+                <table class="table table-bordered table-striped" id="gbmStatsTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>{% if request.session.language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <small class="text-muted">
+                    {% if request.session.language == 'en' %}
+                    Theoretical values are computed from the exact GBM moments:
+                    E[S<sub>T</sub>] = S₀·e<sup>μT</sup> and
+                    Std[S<sub>T</sub>] = S₀·e<sup>μT</sup>·√(e<sup>σ²T</sup> − 1).
+                    {% else %}
+                    Os valores teóricos são calculados a partir dos momentos exatos do MBG:
+                    E[S<sub>T</sub>] = S₀·e<sup>μT</sup> e
+                    Desvio[S<sub>T</sub>] = S₀·e<sup>μT</sup>·√(e<sup>σ²T</sup> − 1).
+                    {% endif %}
+                </small>
+            </div>
+        </div>
     </div>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
 <script>
-    document.getElementById("gbmForm").onsubmit = function(event) {
-        event.preventDefault();
-        const formData = new FormData(this);
-        fetch(this.action, {
-            method: "POST",
-            body: formData,
-            headers: {
-                "X-CSRFToken": formData.get("csrfmiddlewaretoken")
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById("results").style.display = "block";
-            document.getElementById("pricePlot").src = "data:image/png;base64," + data.price_plot;
-            document.getElementById("distributionPlot").src = "data:image/png;base64," + data.distribution_plot;
+    function submitGbmForm() {
+        const form = $('#gbmForm');
+        const btn = form.find('button');
 
-            const statsTable = document.getElementById("statisticsTable");
-            statsTable.innerHTML = "";
-            for (const [key, value] of Object.entries(data.statistics)) {
-                statsTable.innerHTML += `<tr><th>${key}</th><td>${value.toFixed(2)}</td></tr>`;
+        btn.prop('disabled', true).text('{% if request.session.language == "en" %}Processing...{% else %}Processando...{% endif %}');
+
+        $.ajax({
+            url: form.attr('action'),
+            method: 'POST',
+            data: form.serialize(),
+            success: function (data) {
+                if (data.error) {
+                    alert('{% if request.session.language == "en" %}Error: {% else %}Erro: {% endif %}' + data.error);
+                    return;
+                }
+
+                $('#gbmResultSection').fadeIn();
+                $('#gbmPathsPlot').attr('src', 'data:image/png;base64,' + data.price_plot);
+                $('#gbmDistributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
+
+                const tbody = $('#gbmStatsTable tbody');
+                tbody.empty();
+                for (const [key, value] of Object.entries(data.statistics)) {
+                    let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                    tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
+                }
+            },
+            error: function (xhr) {
+                let msg = '{% if request.session.language == "en" %}Unknown error{% else %}Erro desconhecido{% endif %}';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    msg = xhr.responseJSON.error;
+                }
+                alert('{% if request.session.language == "en" %}Error: {% else %}Erro: {% endif %}' + msg);
+            },
+            complete: function () {
+                btn.prop('disabled', false).text('{% if request.session.language == "en" %}Run Simulation{% else %}Executar Simulação{% endif %}');
             }
-        })
-        .catch(error => {
-            alert("Erro: " + error.message);
         });
-    };
+    }
 </script>
