@@ -72,6 +72,7 @@ TEMPLATES = [
 ]
 
 AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
@@ -153,6 +154,9 @@ SOCIALACCOUNT_PROVIDERS = {
         "AUTH_PARAMS": {"access_type": "online"},
     }
 }
+
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
 
 # email settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

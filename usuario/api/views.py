@@ -15,7 +15,7 @@ def sing_up_template(request):
     return render(request, "site/usuario/cadastro.html")
 
 
-LOGIN_URL_NAME = 'account_login' 
+LOGIN_URL_NAME = 'custom_login_template' 
 
 def login_template(request):
     return render(request, "admin/login.html")

@@ -52,7 +52,7 @@
 
         <div class="col-lg-6 col-md-12">
             <h3 class="text-center mb-4">Cadastre-se</h3>
-            <form method="post" action="{% url 'account_signup' %}">
+            <form method="post" action="{% url 'custom_signup' %}">
                 {% csrf_token %}
                 <div class="form-group">
                     <label for="username">User</label>
@@ -73,7 +73,7 @@
                 <button type="submit" class="btn btn-primary btn-block">Sing up</button>
             </form>
             <div class="d-flex justify-content-center align-items-center mt-3">
-                Already have an account? <a href="{% url 'admin:logout' %}"class="btn btn-link"> Log in</a>
+                Already have an account? <a href="{% url 'login-customizado' %}" class="btn btn-link"> Log in</a>
             </div>
         </div>
         <div class="image-footer">

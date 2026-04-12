@@ -32,7 +32,7 @@ def custom_admin_login(request):
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
-            auth_login(request, user)
+            auth_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             if user.is_superuser:
                 return redirect("/admin/")
             else:
