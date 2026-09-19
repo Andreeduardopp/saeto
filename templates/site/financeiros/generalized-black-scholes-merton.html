@@ -286,7 +286,7 @@
             </div>
             
             <div class="text-center">
-                <button type="button" class="btn btn-success" id="saveProjectBtnGeneralized" onclick="saveGeneralizedProject()">
+                <button type="button" class="btn btn-success" id="saveProjectBtnGeneralized" onclick="saveGeneralizedProject()" disabled>
                     {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
@@ -294,6 +294,15 @@
 </div>
 
 <script>
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var gbsmLastRun = null;
+
+    function setGbsmLastRun(run) {
+        gbsmLastRun = run;
+        document.getElementById('saveProjectBtnGeneralized').disabled = !run;
+    }
+
     function handleGeneralizedBsmSubmit() {
         const loadingSpinner = document.getElementById('loadingSpinnerGeneralized');
         const resultsContainer = document.getElementById('generalizedBsmResults');
@@ -302,6 +311,9 @@
         loadingSpinner.style.display = 'block';
         resultsContainer.style.display = 'none';
         
+        setGbsmLastRun(null);
+        const parameters = readGbsmParameters();
+
         const formData = new FormData(form);
         
         fetch('{% url "generalized_black_scholes_merton_api" %}', {
@@ -338,6 +350,7 @@
             document.getElementById('payoffChartGeneralized').src = 'data:image/png;base64,' + data.payoff_plot;
             
             document.getElementById('interpretationGeneralized').innerHTML = data.interpretation;
+            setGbsmLastRun({ parameters, results: readGbsmResults() });
             
             resultsContainer.style.display = 'block';
             resultsContainer.scrollIntoView({ behavior: 'smooth' });
@@ -352,14 +365,11 @@
     function resetGeneralizedBsmForm() {
         document.getElementById('generalizedBsmForm').reset();
         document.getElementById('generalizedBsmResults').style.display = 'none';
+        setGbsmLastRun(null);
     }
 
-    function saveGeneralizedProject() {
-        const saveBtn = document.getElementById('saveProjectBtnGeneralized');
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> {% if language == 'en' %}Saving...{% else %}Salvando...{% endif %}`;
-
-        const parameters = {
+    function readGbsmParameters() {
+        return {
             asset_price: document.getElementById('asset_price_generalized').value,
             exercise_price: document.getElementById('exercise_price_generalized').value,
             time_to_expiration: document.getElementById('time_to_expiration_generalized').value,
@@ -369,8 +379,10 @@
             dividend_yield: document.getElementById('dividend_yield_generalized').value,
             option_type: document.querySelector('input[name="option_type"]:checked').value
         };
+    }
 
-        const results = {
+    function readGbsmResults() {
+        return {
             option_price: document.getElementById('optionPriceGeneralized').textContent,
             d1: document.getElementById('d1ValueGeneralized').textContent,
             d2: document.getElementById('d2ValueGeneralized').textContent,
@@ -388,38 +400,17 @@
             payoff_plot : document.getElementById('payoffChartGeneralized').src,
             interpretation: document.getElementById('interpretationGeneralized').innerHTML
         };
+    }
 
-        const payload = {
-            model_type: 'GENERALIZED_BLACK_SCHOLES_MERTON',
-            title:'Generalized Black-Scholes-Merton Report', 
-            parameters: parameters,
-            results: results
-        };
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
-
-        fetch("{% url 'save_financial_model' %}", {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('{% if language == "en" %}Project saved successfully!{% else %}Projeto salvo com sucesso!{% endif %}');
-            } else {
-                alert('{% if language == "en" %}Error saving project:{% else %}Erro ao salvar o projeto:{% endif %} ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('{% if language == "en" %}An unexpected error occurred.{% else %}Ocorreu um erro inesperado.{% endif %}');
-        })
-        .finally(() => {
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `{% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}`;
+    function saveGeneralizedProject() {
+        if (!gbsmLastRun) return;
+        saetoSaveProject({
+            button: document.getElementById('saveProjectBtnGeneralized'),
+            url: '{% url "save_financial_model" %}',
+            modelType: 'GENERALIZED_BLACK_SCHOLES_MERTON',
+            parameters: gbsmLastRun.parameters,
+            results: gbsmLastRun.results,
+            lang: '{{ language }}',
         });
     }
 </script>

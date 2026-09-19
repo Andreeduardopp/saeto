@@ -79,45 +79,47 @@
     </div>
     <div class="form-section">
         <form id="simpleCombinationForm">
+            {% csrf_token %}
             <div class="row align-items-end">
                 <div class="col-md-2 mb-3">
                     <label for="quantity" class="form-label">{% if request.session.language == 'en' %}Quantity{% else %}Quantidade{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">Q</span>
-                        <input type="number" class="form-control" id="quantity" value="10">
+                        <input type="number" class="form-control" id="quantity" value="{{ initial_data.quantity }}">
                     </div>
                 </div>
                 <div class="col-md-2 mb-3">
                     <label for="strikePriceE" class="form-label">{% if request.session.language == 'en' %}Strike Price{% else %}Preço de Exercício{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">E</span>
-                        <input type="number" class="form-control" id="strikePriceE" value="100">
+                        <input type="number" class="form-control" id="strikePriceE" value="{{ initial_data.strikePriceE }}">
                     </div>
                 </div>
                 <div class="col-md-2 mb-3">
                     <label for="initialValue" class="form-label">{% if request.session.language == 'en' %}Initial Value{% else %}Valor inicial{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" class="form-control" id="initialValue" value="100">
+                        <input type="number" class="form-control" id="initialValue" value="{{ initial_data.initialValue }}">
                     </div>
                 </div>
                 <div class="col-md-2 mb-3">
                     <label for="finalValue" class="form-label">{% if request.session.language == 'en' %}Final Value{% else %}Valor final{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" class="form-control" id="finalValue" value="105">
+                        <input type="number" class="form-control" id="finalValue" value="{{ initial_data.finalValue }}">
                     </div>
                 </div>
                 <div class="col-md-2 mb-3">
                     <label for="divisions" class="form-label">{% if request.session.language == 'en' %}Divisions{% else %}Divisões{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">n</span>
-                        <input type="number" class="form-control" id="divisions" value="10">
+                        <input type="number" class="form-control" id="divisions" value="{{ initial_data.divisions }}">
                     </div>
                 </div>
                 <div class="col-md-2 mb-3 text-end">
                     <button type="button" id="clearButton" class="btn btn-custom-light-blue me-2">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
                     <button type="button" id="calculateButton" class="btn btn-custom-blue">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
+                    <button type="button" id="saveProjectButton" class="btn btn-success mt-2" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
                 </div>
             </div>
             </form>
@@ -260,9 +262,30 @@
     const canvas = document.getElementById('payoffChartCanvas');
     const chartContainer = document.getElementById('payoffChartContainer');
 
+    const saveBtn = document.getElementById('saveProjectButton');
+
     let payoffChart;
+    // Inputs and results of the last successful calculation; Save sends exactly this.
+    let lastRun = null;
 
     const lang = '{{ request.session.language | default:"en" }}';
+
+    const setLastRun = (run) => {
+        lastRun = run;
+        saveBtn.disabled = !run;
+    };
+
+    saveBtn.addEventListener('click', () => {
+        if (!lastRun || !payoffChart) return;
+        saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'ASSET_PUT_COMBINATION',
+            parameters: lastRun.parameters,
+            results: { ...lastRun.results, chart: payoffChart.toBase64Image() },
+            lang,
+        });
+    });
     const initialMessage = lang === 'en' ? "Enter parameters and click 'Calculate' to see results." : "Insira os parâmetros e clique em 'Calcular' para ver os resultados.";
 
 
@@ -345,6 +368,8 @@
             const finalValue = parseFloat(document.getElementById('finalValue').value) || 0;   // Range end for S_T
             const divisions = parseInt(document.getElementById('divisions').value) || 1;
             
+            setLastRun(null);
+
             // --- Input Validations (can be adjusted as needed) ---
             const displayError = (message) => {
                 resultsBody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">${message}</td></tr>`;
@@ -403,19 +428,21 @@
             });
             drawChart(assetPrices, assetValues, putValues, combinationValues);
 
+            // Same columns as the table: price and put value per unit, combination for the whole position.
+            setLastRun({
+                parameters: { quantity, strikePriceE, initialValue, finalValue, divisions },
+                results: {
+                    rows: assetPrices.map((price, index) => [price, Math.max(0, strikePriceE - price), combinationValues[index]]),
+                },
+            });
         });
     }
 
     if (clearBtn) {
         clearBtn.addEventListener('click', function() {
-            form.reset();
-            chartContainer.style.display = 'none'; 
-            // Set default values back if needed, as form.reset() might not restore them
-            document.getElementById('quantity').value = "10";
-            document.getElementById('strikePriceE').value = "110";
-            document.getElementById('initialValue').value = "100";
-            document.getElementById('finalValue').value = "105";
-            document.getElementById('divisions').value = "10";
+            form.reset(); // back to the loaded values (defaults, or the saved run on rerun)
+            setLastRun(null);
+            chartContainer.style.display = 'none';
 
 
             const initialMessage =

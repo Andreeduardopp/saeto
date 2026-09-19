@@ -334,7 +334,7 @@
                 <button type="button" class="btn btn-secondary" onclick="resetCoxRossRubinsteinForm()">
                     {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                 </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()">
+                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
                     {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
@@ -343,6 +343,15 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <script>
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var crrLastRun = null;
+
+    function setCrrLastRun(run) {
+        crrLastRun = run;
+        document.getElementById('saveProjectBtn').disabled = !run;
+    }
+
     // Define the handleCRRSubmit function globally
     function handleCRRSubmit() {
         // Get fresh references to the DOM elements each time
@@ -366,6 +375,9 @@
         loadingSpinner.style.display = 'block';
         resultsContainer.style.display = 'none';
         
+        setCrrLastRun(null);
+        const parameters = readCrrParameters();
+
         // Get form data
         const formData = new FormData(form);
         
@@ -420,6 +432,7 @@
             
             // Update interpretation
             document.getElementById('interpretationCRR').innerHTML = data.interpretation;
+            setCrrLastRun({ parameters, results: readCrrResults() });
             
             // Show results
             resultsContainer.style.display = 'block';
@@ -439,14 +452,11 @@
         document.getElementById('coxRossRubinsteinForm').reset();
         document.getElementById('coxRossRubinsteinResults').style.display = 'none';
         document.getElementById('latticeContainerCRR').innerHTML = '';
+        setCrrLastRun(null);
     }
 
-    function saveProject() {
-        const saveBtn = document.getElementById('saveProjectBtn');
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = `{% if language == 'en' %}<span class="spinner-border spinner-border-sm"></span> Saving...{% else %}<span class="spinner-border spinner-border-sm"></span> Salvando...{% endif %}`;
-
-        const parameters = {
+    function readCrrParameters() {
+        return {
             asset_price: document.getElementById('asset_price').value,
             exercise_price: document.getElementById('exercise_price').value,
             time_to_expiration: document.getElementById('time_to_expiration').value,
@@ -456,9 +466,10 @@
             steps: document.getElementById('steps').value,
             option_type: document.querySelector('input[name="option_type"]:checked').value
         };
+    }
 
-        // 2. Collect Results from the results section
-        const results = {
+    function readCrrResults() {
+        return {
             option_price: document.getElementById('optionPriceCRR').textContent,
             break_even: document.getElementById('breakEvenValueCRR').textContent,
             max_loss: document.getElementById('maxLossValueCRR').textContent,
@@ -483,39 +494,17 @@
             lattice : document.getElementById('latticeContainerCRR').innerHTML,
             interpretation: document.getElementById('interpretationCRR').innerHTML
         };
+    }
 
-        const payload = {
-            model_type: 'COX_ROSS',
-            title:'Cox-Ross Binomial Report', 
-            parameters: parameters,
-            results: results,
-        };
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
-
-        fetch("{% url 'save_financial_model' %}", {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('{% if language == "en" %}Project saved successfully!{% else %}Projeto salvo com sucesso!{% endif %}');
-            } else {
-                alert('{% if language == "en" %}Error saving project:{% else %}Erro ao salvar o projeto:{% endif %} ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('{% if language == "en" %}An unexpected error occurred.{% else %}Ocorreu um erro inesperado.{% endif %}');
-        })
-        .finally(() => {
-            // Re-enable the button
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `{% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}`;
+    function saveProject() {
+        if (!crrLastRun) return;
+        saetoSaveProject({
+            button: document.getElementById('saveProjectBtn'),
+            url: '{% url "save_financial_model" %}',
+            modelType: 'COX_ROSS',
+            parameters: crrLastRun.parameters,
+            results: crrLastRun.results,
+            lang: '{{ language }}',
         });
     }
 
@@ -527,7 +516,6 @@
         const calculateCRRBtn = document.getElementById('calculateBtnCRR');
         const recalculateCRRBtn = document.getElementById('recalculateBtnCRR');
         const latticeContainer = document.getElementById('latticeContainerCRR');
-        const saveBtn = document.getElementById('saveProjectBtn'); 
 
         console.log('DOM fully loaded - CRR Elements check:', {
             form: crrForm ? 'Found' : 'Not found',
@@ -537,7 +525,6 @@
             recalculateBtn: recalculateCRRBtn ? 'Found' : 'Not found',
             latticeContainer: latticeContainer ? 'Found' : 'Not found'
         });
-        if (saveBtn) saveBtn.addEventListener('click', saveProject); 
     });
 </script>
 

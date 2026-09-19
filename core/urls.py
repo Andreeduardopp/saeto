@@ -42,7 +42,6 @@ urlpatterns = [
     path("references/", reference_view, name="references"),
     path("set_language/", set_language, name="set_language"),
     path('my-simulations/', simulation_list_view, name='simulation_list'),
-    path('simulations/download/<uuid:simulation_id>/', download_report_view, name='download_report'),
     path('my-simulations/delete/', delete_simulation_view, name='delete_simulation'),
     path('perfil-view/', perfil_view, name='perfil_view'),
 ]

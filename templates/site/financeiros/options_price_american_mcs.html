@@ -259,9 +259,19 @@
         }
     }
 
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var mcsAmericanLastRun = null;
+
+    function setMcsAmericanLastRun(run) {
+        mcsAmericanLastRun = run;
+        document.getElementById('saveProjectBtn').disabled = !run;
+    }
+
     function submitAmericanOptionForm() {
-        const saveBtn = document.getElementById('saveProjectBtn');
         clearAmericanErrors();
+        setMcsAmericanLastRun(null);
+        const parameters = readMcsAmericanParameters();
         const loadingOverlay = $('#loading-overlay');
         const form = $('#americanOptionForm');
         $.ajax({
@@ -280,6 +290,7 @@
                 $('#convergencePlot').show();
                 $('#pricePlotAmerican').attr('src', 'data:image/png;base64,' + data.price_plot);
                 $('#exerciseBoundaryPlot').attr('src', 'data:image/png;base64,' + data.exercise_boundary_plot);
+                setMcsAmericanLastRun({ parameters, results: readMcsAmericanResults() });
             },
             error: function(xhr, status, error) {
                 loadingOverlay.hide();
@@ -301,23 +312,10 @@
                 alert(errorMessage);
             }
         });
-        saveBtn.disabled = false;
     }
-    function saveProject() {
-        const saveBtn = document.getElementById('saveProjectBtn');
-        
-        // Check if there are results to save
-        const resultsSection = document.getElementById('resultSectionAmerican');
-        if (resultsSection.style.display === 'none') {
-            alert('{% if language == "en" %}Please run the simulation first before saving.{% else %}Por favor, execute a simulação antes de salvar.{% endif %}');
-            return;
-        }
-    
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = `{% if language == 'en' %}<span class="spinner-border spinner-border-sm"></span> Saving...{% else %}<span class="spinner-border spinner-border-sm"></span> Salvando...{% endif %}`;
-    
-        // 1. Collect Parameters from the form
-        const parameters = {
+
+    function readMcsAmericanParameters() {
+        return {
             S0: document.getElementById('S0_american').value,
             K: document.getElementById('K_american').value,
             T: document.getElementById('T_american').value,
@@ -327,49 +325,26 @@
             num_passos: document.getElementById('num_passos').value,
             option_type: document.getElementById('option_type_american').value
         };
-    
-        // 2. Collect Results from the results section
-        const results = {
+    }
+
+    function readMcsAmericanResults() {
+        return {
             preco_estimado: document.getElementById('estimatedPriceAmerican').textContent,
             price_plot: document.getElementById('pricePlotAmerican').src,
             exercise_boundary_plot: document.getElementById('exerciseBoundaryPlot').src,
             convergence_plot: document.getElementById('convergencePlot').src,
         };
-    
-        // 3. Prepare data payload for the server
-        const payload = {
-            model_type: 'MONTE_CARLO_AMERICAN',
-            title: '{% if language == "en" %}American Option Pricing Report{% else %}Relatório de Precificação de Opção Americana{% endif %}',
-            parameters: parameters,
-            results: results
-        };
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
-    
-        fetch("{% url 'save_mcs_model' %}", {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('{% if language == "en" %}Project saved successfully!{% else %}Projeto salvo com sucesso!{% endif %}');
-            } else {
-                alert('{% if language == "en" %}Error saving project:{% else %}Erro ao salvar o projeto:{% endif %} ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('{% if language == "en" %}An unexpected error occurred.{% else %}Ocorreu um erro inesperado.{% endif %}');
-        })
-        .finally(() => {
-            // Re-enable the button
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `{% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}`;
+    }
+
+    function saveProject() {
+        if (!mcsAmericanLastRun) return;
+        saetoSaveProject({
+            button: document.getElementById('saveProjectBtn'),
+            url: '{% url "save_financial_model" %}',
+            modelType: 'MONTE_CARLO_AMERICAN',
+            parameters: mcsAmericanLastRun.parameters,
+            results: mcsAmericanLastRun.results,
+            lang: '{{ language }}',
         });
     }
 </script>

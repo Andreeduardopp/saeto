@@ -300,7 +300,7 @@
                 <button type="button" class="btn btn-secondary" onclick="resetBlackScholesMertonForm()">
                     {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                 </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()">
+                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
                     {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
@@ -407,6 +407,15 @@
 </div>
 
 <script>
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var bsmLastRun = null;
+
+    function setBsmLastRun(run) {
+        bsmLastRun = run;
+        document.getElementById('saveProjectBtn').disabled = !run;
+    }
+
     // Define the handleMertonSubmit function globally
     function handleMertonSubmit() {
         // Get fresh references to the DOM elements each time
@@ -428,6 +437,9 @@
         loadingSpinner.style.display = 'block';
         resultsContainer.style.display = 'none';
         
+        setBsmLastRun(null);
+        const parameters = readBsmParameters();
+
         // Get form data
         const formData = new FormData(form);
         
@@ -477,6 +489,7 @@
             
             // Update interpretation
             document.getElementById('interpretationMerton').innerHTML = data.interpretation;
+            setBsmLastRun({ parameters, results: readBsmResults() });
             
             // Show results
             resultsContainer.style.display = 'block';
@@ -495,14 +508,11 @@
     function resetBlackScholesMertonForm() {
         document.getElementById('blackScholesMertonForm').reset();
         document.getElementById('blackScholesMertonResults').style.display = 'none';
+        setBsmLastRun(null);
     }
 
-    function saveProject() {
-        const saveBtn = document.getElementById('saveProjectBtn');
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = `{% if language == 'en' %}<span class="spinner-border spinner-border-sm"></span> Saving...{% else %}<span class="spinner-border spinner-border-sm"></span> Salvando...{% endif %}`;
-
-        const parameters = {
+    function readBsmParameters() {
+        return {
             asset_price: document.getElementById('asset_price').value,
             exercise_price: document.getElementById('exercise_price').value,
             time_to_expiration: document.getElementById('time_to_expiration').value,
@@ -511,9 +521,10 @@
             dividend_yield: document.getElementById('dividend_yield').value,
             option_type: document.querySelector('input[name="option_type"]:checked').value
         };
+    }
 
-        // 2. Collect Results from the results section
-        const results = {
+    function readBsmResults() {
+        return {
             option_price: document.getElementById('optionPriceMerton').textContent,
             d1: document.getElementById('d1ValueMerton').textContent,
             d2: document.getElementById('d2ValueMerton').textContent,
@@ -530,40 +541,17 @@
             payoff_plot : document.getElementById('payoffChartMerton').src,
             interpretation: document.getElementById('interpretationMerton').innerHTML
         };
+    }
 
-        // 3. Prepare data payload for the server
-        const payload = {
-            model_type: 'BLACK_SCHOLES_MERTON',
-            title:'Black-Scholes-Merton Report', 
-            parameters: parameters,
-            results: results
-        };
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
-
-        fetch("{% url 'save_financial_model' %}", {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('{% if language == "en" %}Project saved successfully!{% else %}Projeto salvo com sucesso!{% endif %}');
-            } else {
-                alert('{% if language == "en" %}Error saving project:{% else %}Erro ao salvar o projeto:{% endif %} ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('{% if language == "en" %}An unexpected error occurred.{% else %}Ocorreu um erro inesperado.{% endif %}');
-        })
-        .finally(() => {
-            // Re-enable the button
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `{% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}`;
+    function saveProject() {
+        if (!bsmLastRun) return;
+        saetoSaveProject({
+            button: document.getElementById('saveProjectBtn'),
+            url: '{% url "save_financial_model" %}',
+            modelType: 'BLACK_SCHOLES_MERTON',
+            parameters: bsmLastRun.parameters,
+            results: bsmLastRun.results,
+            lang: '{{ language }}',
         });
     }
 
@@ -574,7 +562,6 @@
         const mertonResultsContainer = document.getElementById('blackScholesMertonResults');
         const calculateMertonBtn = document.getElementById('calculateBtn');
         const recalculateMertonBtn = document.getElementById('recalculateBtnMerton');
-        const saveBtn = document.getElementById('saveProjectBtn'); 
 
         console.log('DOM fully loaded - Merton Elements check:', {
             form: mertonForm ? 'Found' : 'Not found',
@@ -585,6 +572,5 @@
         });
 
         if (recalculateMertonBtn) recalculateMertonBtn.addEventListener('click', handleMertonSubmit);
-        if (saveBtn) saveBtn.addEventListener('click', saveProject); 
     });
 </script>

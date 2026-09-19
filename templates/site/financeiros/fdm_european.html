@@ -194,11 +194,11 @@
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>{% if language == 'en' %}Price Steps (M){% else %}Passos de Preço (M){% endif %}</td>
+                                    <td>{% if language == 'en' %}Time Steps (M){% else %}Passos de Tempo (M){% endif %}</td>
                                     <td id="gridMValue">-</td>
                                 </tr>
                                 <tr>
-                                    <td>{% if language == 'en' %}Time Steps (N){% else %}Passos de Tempo (N){% endif %}</td>
+                                    <td>{% if language == 'en' %}Space Steps (N){% else %}Passos Espaciais (N){% endif %}</td>
                                     <td id="gridNValue">-</td>
                                 </tr>
                                 <tr>
@@ -244,6 +244,9 @@
                  <button type="button" class="btn btn-secondary" onclick="resetFdmForm()">
                     {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                 </button>
+                <button type="button" class="btn btn-success" id="fdmSaveProjectBtn" onclick="saveFdmProject(this)" disabled>
+                    {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
+                </button>
             </div>
         </div>
     </div>
@@ -287,16 +290,34 @@
 </div>
 
 <script>
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var fdmLastRun = null;
+
+    function setFdmLastRun(run) {
+        fdmLastRun = run;
+        document.getElementById('fdmSaveProjectBtn').disabled = !run;
+    }
+
     function handleSubmitFDM() {
         const loadingSpinner = document.getElementById('loadingSpinner');
         const resultsContainer = document.getElementById('fdmResults');
         const form = document.getElementById('fdmForm');
-        
+
         loadingSpinner.style.display = 'block';
         resultsContainer.style.display = 'none';
-        
+        setFdmLastRun(null);
+
         const formData = new FormData(form);
-        
+        const parameters = {
+            asset_price: parseFloat(formData.get('asset_price')),
+            exercise_price: parseFloat(formData.get('exercise_price')),
+            time_to_expiration: parseFloat(formData.get('time_to_expiration')),
+            interest_rate: parseFloat(formData.get('interest_rate')),
+            volatility: parseFloat(formData.get('volatility')),
+            option_type: formData.get('option_type'),
+        };
+
         fetch('{% url "fdm_european_api" %}', { 
             method: 'POST',
             body: formData,
@@ -324,6 +345,23 @@
             document.getElementById('interpretation').innerHTML = data.interpretation;
             resultsContainer.style.display = 'block';
             resultsContainer.scrollIntoView({ behavior: 'smooth' });
+
+            setFdmLastRun({
+                parameters,
+                results: {
+                    option_price: data.option_price,
+                    bs_price: data.bs_price,
+                    error_val: parseFloat(data.error_val),
+                    grid_m: data.grid_m,
+                    grid_n: data.grid_n,
+                    break_even: data.break_even,
+                    max_loss: data.max_loss,
+                    greeks: { delta: data.greeks.delta, gamma: data.greeks.gamma, theta: data.greeks.theta },
+                    price_plot: 'data:image/png;base64,' + data.price_plot,
+                    diffusion_plot: 'data:image/png;base64,' + data.payoff_plot,
+                    interpretation: data.interpretation,
+                },
+            });
         })
         .catch(error => {
             loadingSpinner.style.display = 'none';
@@ -331,8 +369,21 @@
         });
     }
 
+    function saveFdmProject(button) {
+        if (!fdmLastRun) return;
+        saetoSaveProject({
+            button,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'FDM_EUROPEAN',
+            parameters: fdmLastRun.parameters,
+            results: fdmLastRun.results,
+            lang: '{{ language }}',
+        });
+    }
+
     function resetFdmForm() {
         document.getElementById('fdmForm').reset();
         document.getElementById('fdmResults').style.display = 'none';
+        setFdmLastRun(null);
     }
 </script>

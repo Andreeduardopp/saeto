@@ -2,10 +2,8 @@ from django.urls import path
 from .api.views import *
 
 urlpatterns = [
-    path('save-financial-model/', save_black_schole_model_view, name='save_financial_model'),
-    path('save-mcs-model/', save_mcs_model, name='save_mcs_model'),
+    path('save-financial-model/', save_financial_model, name='save_financial_model'),
     path('black-scholes/api/', black_scholes_view, name='black_scholes_api'),
-    path('black-scholes-merton/', black_scholes_merton_template, name='black_scholes_merton'),
     path('black-scholes-merton/api/', black_scholes_merton_view, name='black_scholes_merton_api'),
     path('generalized-black-scholes-merton/', generalized_black_scholes_merton_template, name='generalized_black_scholes_merton'),
     path('generalized-black-scholes-merton/api/', generalized_black_scholes_merton_view, name='generalized_black_scholes_merton_api'),
@@ -18,7 +16,6 @@ urlpatterns = [
     path('financial_options/cox_ross/overview/', cox_ross_overview_view, name='cox_ross_overview'),
     path('financial_options/monte_carlo/overview/', monte_carlo_overview_view, name='monte_carlo_overview'),
     path('financial_options/finite_difference/overview/', finite_difference_overview_view, name='finite_difference_overview'),
-    # path('financial_options/european_finite_difference/overview/', european_finite_difference_view, name='european_finite_difference'),
     path('pricing/fdm/european/', fdm_european_view, name='european_finite_difference'),
     path('pricing/fdm/european/', fdm_european_view, name='fdm_european_api'),
     path('report/view/<uuid:simulation_id>/', view_report_view, name='view_report'),

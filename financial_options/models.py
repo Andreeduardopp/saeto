@@ -21,6 +21,11 @@ class FinantialModelsChoices(models.TextChoices):
     COX_ROSS = 'COX_ROSS', _('Cox-Ross Binomial'),
     MONTE_CARLO_EUROPEAN = 'MONTE_CARLO_EUROPEAN', _('Monte-carlo European'),
     MONTE_CARLO_AMERICAN = 'MONTE_CARLO_AMERICAN', _('Monte-carlo American'),
+    FDM_EUROPEAN = 'FDM_EUROPEAN', _('Finite Difference European'),
+    CALL_PUT_PAYOFF = 'CALL_PUT_PAYOFF', _('Call & Put Payoff'),
+    ASSET_PUT_COMBINATION = 'ASSET_PUT_COMBINATION', _('Asset + Put Combination'),
+    BULL_BEAR_SPREAD = 'BULL_BEAR_SPREAD', _('Bull / Bear Spread'),
+    COLLAR = 'COLLAR', _('Collar'),
 
 class FinantialModels(ModelPadrao):
     name = models.CharField(max_length=255, default='Financial Model')
@@ -53,11 +58,16 @@ class FinantialModels(ModelPadrao):
     def __str__(self):
         return self.name
     
+    @property
+    def can_rerun(self):
+        from financial_options.report_registry import REGISTRY
+        return self.model_type in REGISTRY
+
     def clean(self):
         super().clean()
-        if self.pk is None and self.usuario:
+        if self._state.adding and self.usuario_id:
             current_count = FinantialModels.objects.filter(usuario=self.usuario).count()
-            if current_count >= 41:
+            if current_count >= 40:
                 raise ValidationError(
                     _('You have reached the maximum limit of 40 financial models.'),
                     code='limit_exceeded',
@@ -71,6 +81,8 @@ class FinantialModels(ModelPadrao):
             if self.criado_em:
                 criado_em = self.criado_em.strftime('%d/%m/%Y %H:%M')
             self.name = f"{self.get_model_type_display()} - {criado_em}"
-        if self.pk is None:
-            self.full_clean()
+        # `pk` is a UUID with a default, so it is never None here; `_state.adding` is
+        # what tells a new row apart. `report` holds the 'online' sentinel, not a PDF.
+        if self._state.adding:
+            self.full_clean(exclude=['report'])
         super().save(*args, **kwargs)

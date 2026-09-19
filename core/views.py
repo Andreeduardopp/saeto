@@ -1,12 +1,10 @@
 import json
-import os
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.shortcuts import get_object_or_404, redirect, render
-from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
-import requests
 from estocasticos.use_cases.mbg_ito_use_case import GeometricBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
 from estocasticos.use_cases.monte_carlos_use_case import MonteCarloUseCase
@@ -89,31 +87,6 @@ def simulation_list_view(request):
         'page_obj': page_obj 
     }
     return render(request, 'site/home/simulation_list.html', context)
-
-@login_required
-def download_report_view(request, simulation_id):
-    simulation = get_object_or_404(FinantialModels, id=simulation_id, usuario=request.user)
-
-    if not simulation.report:
-        raise Http404("Report not found.")
-
-    try:
-        file_url = simulation.report.url
-        response = requests.get(file_url, stream=True)
-        response.raise_for_status() 
-        filename = os.path.basename(simulation.report.name)
-        
-        http_response = HttpResponse(
-            response.content,
-            content_type=response.headers.get('content-type', 'application/octet-stream')
-        )
-        http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
-        return http_response
-
-    except requests.exceptions.RequestException as e:
-        return HttpResponse(f"Error fetching file: {e}", status=500)
-
 
 @login_required
 def delete_simulation_view(request):

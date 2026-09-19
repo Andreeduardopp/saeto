@@ -74,6 +74,21 @@
             font-weight: bold;
             width: 45%;
         }
+        /* Row-per-price grids: may span pages, so only keep each row together. */
+        table.data-table {
+            page-break-inside: auto;
+            font-size: 10pt;
+        }
+        .data-table thead {
+            display: table-header-group;
+        }
+        .data-table tr {
+            page-break-inside: avoid;
+        }
+        .data-table th, .data-table td {
+            padding: 4px 8px;
+            text-align: right;
+        }
         .chart-container {
             text-align: center;
             margin-top: 20px;
@@ -96,6 +111,24 @@
             margin: 0;
             padding: 0;
         }
+        /* The saved fragments carry Bootstrap classes; the report has no Bootstrap. */
+        .binomial-lattice table {
+            font-size: 9pt;
+        }
+        .binomial-lattice th, .binomial-lattice td {
+            padding: 3px 6px;
+        }
+        .table-light, .table-secondary {
+            background-color: #f2f2f2;
+        }
+        .alert {
+            background-color: #f2f2f2;
+            padding: 8px 12px;
+            margin-top: 10px;
+        }
+        .bg-success {
+            background-color: #d1e7dd;
+        }
     </style>
 </head>
 <body>
@@ -106,9 +139,7 @@
     </div>
     <div style="position: fixed; left: 0; right: 0; bottom: 0; height: 12mm; display: flex; align-items: center; justify-content: space-between; padding-left: 1cm; padding-right: 1cm; background-color: white;">
         <div style="flex-shrink: 0;">
-            {% if logo_image %}
-                <img style="height: 15mm; width: 40mm;" src="{{ logo_image }}" alt="Saeto logo">
-            {% endif %}
+            <img style="height: 15mm; width: 40mm;" src="{% static 'app_teoria/assets/logoEng2.png' %}" alt="Saeto logo">
         </div>
         <span style="font-size: 8pt; color: #555; text-align: right;">
             {% if language == 'en' %}
@@ -151,6 +182,7 @@
     </table>
 
     <h2>{% if language == 'en' %}Calculation Results{% else %}Resultados do Cálculo{% endif %}</h2>
+    {% if results %}
     <table class="results-table">
         <tbody>
             {% for key, value in results.items %}
@@ -163,7 +195,8 @@
             {% endfor %}
         </tbody>
     </table>
-    
+    {% endif %}
+
     {% for section_title, section_items in nested_results.items %}
         <h3>{{ section_title }}</h3>
         <table class="results-table">
@@ -173,6 +206,18 @@
                     <td>{{ key|capfirst }}</td>
                     <td>{{ value }}</td>
                 </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+
+    {% for table in tables %}
+        <h3>{{ table.title }}</h3>
+        <table class="data-table">
+            <thead><tr>{% for header in table.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for row in table.rows %}
+                <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -196,7 +241,7 @@
 
     {% if latticeContainer %}
         <div class="mb-4">
-            <h5>{% if request.session.language == 'en' %}Binomial Lattice Visualization{% else %}Visualização da Treliça Binomial{% endif %}</h5>
+            <h5>{% if language == 'en' %}Binomial Lattice Visualization{% else %}Visualização da Treliça Binomial{% endif %}</h5>
             <div id="latticeContainerCRR" class="text-center overflow-auto" style="min-height: 300px;">
                 {{latticeContainer | safe}}
             </div>

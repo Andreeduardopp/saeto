@@ -64,26 +64,27 @@
     </div>
     <div class="form-section">
         <form id="collarForm">
+            {% csrf_token %}
             <div class="row">
                 <div class="col-md-4 col-lg-3 mb-3">
                     <label for="quantity" class="form-label">{% if request.session.language == 'en' %}Quantity{% else %}Quantidade de Ações{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">Q</span>
-                        <input type="number" class="form-control" id="quantity" value="100">
+                        <input type="number" class="form-control" id="quantity" value="{{ initial_data.quantity }}">
                     </div>
                 </div>
                 <div class="col-md-4 col-lg-3 mb-3">
                     <label for="purchasePrice" class="form-label">{% if request.session.language == 'en' %}Stock Purchase Price{% else %}Preço de Compra da Ação{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" class="form-control" id="purchasePrice" value="50">
+                        <input type="number" class="form-control" id="purchasePrice" value="{{ initial_data.purchasePrice }}">
                     </div>
                 </div>
                 <div class="col-md-4 col-lg-3 mb-3">
                     <label for="strikePrice" class="form-label">{% if request.session.language == 'en' %}Options Strike Price{% else %}Preço de Exercício (Opções){% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">E</span>
-                        <input type="number" class="form-control" id="strikePrice" value="55">
+                        <input type="number" class="form-control" id="strikePrice" value="{{ initial_data.strikePrice }}">
                     </div>
                 </div>
             </div>
@@ -92,21 +93,21 @@
                     <label for="minStockPrice" class="form-label">{% if request.session.language == 'en' %}Min Final Stock Price{% else %}Preço Mínimo Final da Ação{% endif %}</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" class="form-control" id="minStockPrice" value="40">
+                        <input type="number" class="form-control" id="minStockPrice" value="{{ initial_data.minStockPrice }}">
                     </div>
                 </div>
                 <div class="col-md-4 col-lg-3 mb-3">
                     <label for="maxStockPrice" class="form-label">{% if request.session.language == 'en' %}Max Final Stock Price{% else %}Preço Máximo Final da Ação{% endif %}</label>
                     <div class="input-group">
                     <span class="input-group-text">R$</span>
-                    <input type="number" class="form-control" id="maxStockPrice" value="60">
+                    <input type="number" class="form-control" id="maxStockPrice" value="{{ initial_data.maxStockPrice }}">
                 </div>
                 </div>
                 <div class="col-md-4 col-lg-2 mb-3">
                     <label for="divisions" class="form-label">{% if request.session.language == 'en' %}Steps{% else %}Passos{% endif %}</label>
                      <div class="input-group">
                         <span class="input-group-text">n</span>
-                        <input type="number" class="form-control" id="divisions" value="5">
+                        <input type="number" class="form-control" id="divisions" value="{{ initial_data.divisions }}">
                     </div>
                 </div>
             </div>
@@ -115,6 +116,7 @@
                 <div class="col-12">
                     <button type="button" id="clearButton" class="btn btn-clear me-2">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
                     <button type="button" id="calculateButton" class="btn btn-calculate">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
+                    <button type="button" id="saveProjectButton" class="btn btn-success ms-2" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
                 </div>
             </div>
         </form>
@@ -237,8 +239,28 @@
     };
     const currentLang = '{{ request.session.language | default:"pt" }}';
     const langT = T[currentLang];
+    const saveBtn = document.getElementById('saveProjectButton');
 
     let payoffChart;
+    // Inputs and results of the last successful calculation; Save sends exactly this.
+    let lastRun = null;
+
+    const setLastRun = (run) => {
+        lastRun = run;
+        saveBtn.disabled = !run;
+    };
+
+    saveBtn.addEventListener('click', () => {
+        if (!lastRun || !payoffChart) return;
+        saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'COLLAR',
+            parameters: lastRun.parameters,
+            results: { ...lastRun.results, chart: payoffChart.toBase64Image() },
+            lang: currentLang,
+        });
+    });
 
     function drawChart(stockPrices, stockResults, callResults, putResults, totalResults) {
         if (payoffChart) {
@@ -333,6 +355,7 @@
             const minStockPrice = parseFloat(document.getElementById('minStockPrice').value) || 0;
             const maxStockPrice = parseFloat(document.getElementById('maxStockPrice').value) || 0;
             const divisions = parseInt(document.getElementById('divisions').value) || 1;
+            setLastRun(null);
 
             if ( maxStockPrice <= minStockPrice) {
                 resultsBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">${currentLang === 'pt' ? '}O Valor Inicial não pode ser maior que o Valor Final.' : 'Initial Value cannot be greater than Final Value.'}</td></tr>`;
@@ -433,12 +456,22 @@
             }
             
             drawChart(stockPrices, stockResults, callResults, putResults, totalResults);
+
+            setLastRun({
+                parameters: { quantity, purchasePrice, strikePrice, minStockPrice, maxStockPrice, divisions },
+                results: {
+                    rows: stockPrices.map((price, index) => [
+                        price, stockResults[index], callResults[index], putResults[index], totalResults[index],
+                    ]),
+                },
+            });
         });
     }
 
     if (clearBtn) {
         clearBtn.addEventListener('click', function() {
-            form.reset();
+            form.reset(); // back to the loaded values (defaults, or the saved run on rerun)
+            setLastRun(null);
             if (payoffChart) {
                 payoffChart.destroy();
                 chartContainer.style.display = 'none'; 

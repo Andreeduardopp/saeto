@@ -282,7 +282,7 @@
                 <button type="button" class="btn btn-secondary" onclick="resetBlackScholesForm()">
                     {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                 </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()">
+                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
                     {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
@@ -351,6 +351,15 @@
   
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <script>
+    // Inputs and results of the last successful run; Save sends exactly this.
+    // `var`, not `let`: this script runs again every time the screen is loaded.
+    var bsLastRun = null;
+
+    function setBsLastRun(run) {
+        bsLastRun = run;
+        document.getElementById('saveProjectBtn').disabled = !run;
+    }
+
     // Define the handleSubmit function globally
     function handleSubmit() {
         // Make sure we get fresh references to the DOM elements each time
@@ -372,6 +381,9 @@
         loadingSpinner.style.display = 'block';
         resultsContainer.style.display = 'none';
         
+        setBsLastRun(null);
+        const parameters = readBsParameters();
+
         // Get form data
         const formData = new FormData(form);
         
@@ -421,6 +433,7 @@
             
             // Update interpretation
             document.getElementById('interpretation').innerHTML = data.interpretation;
+            setBsLastRun({ parameters, results: readBsResults() });
             resultsContainer.style.display = 'block';
             
             // Scroll to results
@@ -437,15 +450,11 @@
     function resetBlackScholesForm() {
         document.getElementById('blackScholesForm').reset();
         document.getElementById('blackScholesResults').style.display = 'none';
+        setBsLastRun(null);
     }
 
-    function saveProject() {
-        const saveBtn = document.getElementById('saveProjectBtn');
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = `{% if language == 'en' %}<span class="spinner-border spinner-border-sm"></span> Saving...{% else %}<span class="spinner-border spinner-border-sm"></span> Salvando...{% endif %}`;
-
-        // 1. Collect Parameters from the form
-        const parameters = {
+    function readBsParameters() {
+        return {
             asset_price: document.getElementById('asset_price').value,
             exercise_price: document.getElementById('exercise_price').value,
             time_to_expiration: document.getElementById('time_to_expiration').value,
@@ -453,9 +462,10 @@
             volatility: document.getElementById('volatility').value,
             option_type: document.querySelector('input[name="option_type"]:checked').value
         };
+    }
 
-        // 2. Collect Results from the results section
-        const results = {
+    function readBsResults() {
+        return {
             option_price: document.getElementById('optionPrice').textContent,
             d1: document.getElementById('d1Value').textContent,
             d2: document.getElementById('d2Value').textContent,
@@ -472,40 +482,17 @@
             payoff_plot : document.getElementById('payoffChart').src,
             interpretation: document.getElementById('interpretation').innerHTML
         };
+    }
 
-        // 3. Prepare data payload for the server
-        const payload = {
-            model_type: 'BLACK_SCHOLES', 
-            title:'Black-Scholes Report',
-            parameters: parameters,
-            results: results
-        };
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
-
-        fetch("{% url 'save_financial_model' %}", {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('{% if language == "en" %}Project saved successfully!{% else %}Projeto salvo com sucesso!{% endif %}');
-            } else {
-                alert('{% if language == "en" %}Error saving project:{% else %}Erro ao salvar o projeto:{% endif %} ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('{% if language == "en" %}An unexpected error occurred.{% else %}Ocorreu um erro inesperado.{% endif %}');
-        })
-        .finally(() => {
-            // Re-enable the button
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = `{% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}`;
+    function saveProject() {
+        if (!bsLastRun) return;
+        saetoSaveProject({
+            button: document.getElementById('saveProjectBtn'),
+            url: '{% url "save_financial_model" %}',
+            modelType: 'BLACK_SCHOLES',
+            parameters: bsLastRun.parameters,
+            results: bsLastRun.results,
+            lang: '{{ language }}',
         });
     }
 
@@ -516,7 +503,6 @@
         const resultsContainer = document.getElementById('blackScholesResults');
         const calculateBtn = document.getElementById('calculateBtn');
         const recalculateBtn = document.getElementById('recalculateBtn');
-        const saveBtn = document.getElementById('saveProjectBtn'); 
 
         console.log('DOM fully loaded - Elements check:', {
             form: form ? 'Found' : 'Not found',
@@ -528,7 +514,6 @@
         
         if (calculateBtn) calculateBtn.addEventListener('click', handleSubmit);
         if (recalculateBtn) recalculateBtn.addEventListener('click', handleSubmit);
-        if (saveBtn) saveBtn.addEventListener('click', saveProject);
 
     });
 </script>
