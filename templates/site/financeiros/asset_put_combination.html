@@ -30,24 +30,6 @@
     .results-table tbody tr:nth-child(even) {
         background-color: #f7fcff; /* Slightly different background for even rows */
     }
-    .btn-custom-blue {
-        background-color: #639dff; /* Blue from image */
-        border-color: #639dff;
-        color: white;
-    }
-    .btn-custom-blue:hover {
-        background-color: #4b8dfc;
-        border-color: #4b8dfc;
-    }
-    .btn-custom-light-blue {
-        background-color: #dae8ff; /* Lighter blue for clear */
-        border-color: #dae8ff;
-        color: #343a40; /* Dark text */
-    }
-    .btn-custom-light-blue:hover {
-        background-color: #c8d8f5;
-        border-color: #c8d8f5;
-    }
     .input-group-text {
         min-width: 40px; /* For Q, E, n labels */
         justify-content: center;
@@ -116,11 +98,11 @@
                         <input type="number" class="form-control" id="divisions" value="{{ initial_data.divisions }}">
                     </div>
                 </div>
-                <div class="col-md-2 mb-3 text-end">
-                    <button type="button" id="clearButton" class="btn btn-custom-light-blue me-2">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
-                    <button type="button" id="calculateButton" class="btn btn-custom-blue">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
-                    <button type="button" id="saveProjectButton" class="btn btn-success mt-2" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
-                </div>
+            </div>
+            <div class="saeto-actions mt-2">
+                <button type="button" id="clearButton" class="btn btn-secondary">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
+                <button type="button" id="calculateButton" class="btn btn-primary">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
+                <button type="button" id="saveProjectButton" class="btn btn-success" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
             </form>
     </div>

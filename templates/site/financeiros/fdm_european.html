@@ -114,12 +114,15 @@
                     </div>
                 </div>
                 
-                <div class="text-end mb-4">
-                    <button type="button" class="btn btn-secondary me-2" onclick="resetFdmForm()">
+                <div class="saeto-actions mb-4">
+                    <button type="button" class="btn btn-secondary" onclick="resetFdmForm()">
                         {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                     </button>
                     <button type="button" class="btn btn-primary" id="calculateBtn" onclick="handleSubmitFDM()">
                         {% if language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-success" id="fdmSaveProjectBtn" onclick="saveFdmProject(this)" disabled>
+                        {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
                     </button>
                 </div>
             </div>
@@ -238,15 +241,6 @@
                 <div class="card-body">
                     <div id="interpretation"></div>
                 </div>
-            </div>
-            
-            <div class="text-center">
-                 <button type="button" class="btn btn-secondary" onclick="resetFdmForm()">
-                    {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
-                </button>
-                <button type="button" class="btn btn-success" id="fdmSaveProjectBtn" onclick="saveFdmProject(this)" disabled>
-                    {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
-                </button>
             </div>
         </div>
     </div>

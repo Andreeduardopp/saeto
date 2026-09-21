@@ -61,25 +61,6 @@
         background-color: #343a40;
         color: white;
     }
-    .btn-calculate {
-        background-color: #007bff;
-        border-color: #007bff;
-        color: white;
-        font-weight: bold;
-    }
-    .btn-calculate:hover {
-        background-color: #0069d9;
-        border-color: #0062cc;
-    }
-    .btn-clear {
-        background-color: #6c757d;
-        border-color: #6c757d;
-        color: white;
-    }
-    .btn-clear:hover {
-        background-color: #5a6268;
-        border-color: #545b62;
-    }
     .input-group-text {
         min-width: 45px;
         justify-content: center;
@@ -210,12 +191,10 @@
                 </div>
             </div>
 
-            <div class="row mt-3">
-                <div class="col-12">
-                    <button type="button" id="clearButton" class="btn btn-clear me-2">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
-                    <button type="button" id="calculateButton" class="btn btn-calculate">{% if request.session.language == 'en' %}Calculate Strategy{% else %}Calcular Estratégia{% endif %}</button>
-                    <button type="button" id="saveProjectButton" class="btn btn-success ms-2" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
-                </div>
+            <div class="saeto-actions mt-3">
+                <button type="button" id="clearButton" class="btn btn-secondary">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
+                <button type="button" id="calculateButton" class="btn btn-primary">{% if request.session.language == 'en' %}Calculate Strategy{% else %}Calcular Estratégia{% endif %}</button>
+                <button type="button" id="saveProjectButton" class="btn btn-success" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </form>
     </div>

@@ -110,12 +110,15 @@
                     </div>
                 </div>
                 
-                <div class="text-end mb-4">
-                    <button type="button" class="btn btn-secondary me-2" onclick="resetBlackScholesForm()">
+                <div class="saeto-actions mb-4">
+                    <button type="button" class="btn btn-secondary" onclick="resetBlackScholesForm()">
                         {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                     </button>
                     <button type="button" class="btn btn-primary" id="calculateBtn" onclick="handleSubmit()">
                         {% if language == 'en' %}Calculate Option Value{% else %}Calcular Valor da Opção{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
+                        {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
                     </button>
                 </div>
             </div>
@@ -273,17 +276,6 @@
                         <!-- Interpretation will be inserted here -->
                     </div>
                 </div>
-            </div>
-            
-            <div class="text-center">
-                <button type="button" class="btn btn-primary" id="recalculateBtn" onclick="handleSubmit()">
-                    {% if request.session.language == 'en' %}Recalculate{% else %}Recalcular{% endif %}
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="resetBlackScholesForm()">
-                    {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
-                </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
-                    {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
     </div>
@@ -502,18 +494,15 @@
         const loadingSpinner = document.getElementById('loadingSpinner');
         const resultsContainer = document.getElementById('blackScholesResults');
         const calculateBtn = document.getElementById('calculateBtn');
-        const recalculateBtn = document.getElementById('recalculateBtn');
 
         console.log('DOM fully loaded - Elements check:', {
             form: form ? 'Found' : 'Not found',
             loadingSpinner: loadingSpinner ? 'Found' : 'Not found',
             resultsContainer: resultsContainer ? 'Found' : 'Not found',
-            calculateBtn: calculateBtn ? 'Found' : 'Not found',
-            recalculateBtn: recalculateBtn ? 'Found' : 'Not found'
+            calculateBtn: calculateBtn ? 'Found' : 'Not found'
         });
-        
+
         if (calculateBtn) calculateBtn.addEventListener('click', handleSubmit);
-        if (recalculateBtn) recalculateBtn.addEventListener('click', handleSubmit);
 
     });
 </script>

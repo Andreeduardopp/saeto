@@ -74,11 +74,17 @@
         </select>
         <ul class="errorlist" id="option_type_errors"></ul>
     </div>
-    <button type="button" class="btn btn-primary mt-3" onclick="submitMonteCarloForm()">
-        {% if language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
-    </button>
-    <button type="button" class="btn btn-success mt-3" id="saveProjectBtn" disabled onclick="saveProject()">
-        {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
+    <div class="saeto-actions mt-3 mb-4">
+        <button type="button" class="btn btn-secondary" onclick="resetMcsForm()">
+            {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
+        </button>
+        <button type="button" class="btn btn-primary" onclick="submitMonteCarloForm()">
+            {% if language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+        </button>
+        <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
+            {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
+        </button>
+    </div>
 </form>
 
 <div class="result-section" id="resultSection" style="display: none;">
@@ -228,6 +234,13 @@
     function setMcsLastRun(run) {
         mcsLastRun = run;
         document.getElementById('saveProjectBtn').disabled = !run;
+    }
+
+    function resetMcsForm() {
+        document.getElementById('precificacaoOpcaoForm').reset();
+        clearErrors();
+        $('#resultSection').hide();
+        setMcsLastRun(null);
     }
 
     function submitMonteCarloForm() {

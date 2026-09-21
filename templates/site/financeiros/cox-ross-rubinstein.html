@@ -152,12 +152,15 @@
                     </div>
                 </div>
                 
-                <div class="text-end mb-4">
-                    <button type="button" class="btn btn-secondary me-2" onclick="resetCoxRossRubinsteinForm()">
+                <div class="saeto-actions mb-4">
+                    <button type="button" class="btn btn-secondary" onclick="resetCoxRossRubinsteinForm()">
                         {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                     </button>
                     <button type="button" class="btn btn-primary" id="calculateBtnCRR" onclick="handleCRRSubmit()">
                         {% if request.session.language == 'en' %}Calculate Option Value{% else %}Calcular Valor da Opção{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
+                        {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
                     </button>
                 </div>
             </div>
@@ -325,17 +328,6 @@
                     <div id="interpretationCRR">
                         </div>
                 </div>
-            </div>
-            
-            <div class="text-center">
-                <button type="button" class="btn btn-primary" id="recalculateBtnCRR" onclick="handleCRRSubmit()">
-                    {% if request.session.language == 'en' %}Recalculate{% else %}Recalcular{% endif %}
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="resetCoxRossRubinsteinForm()">
-                    {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
-                </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
-                    {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
     </div>
@@ -514,7 +506,6 @@
         const crrLoadingSpinner = document.getElementById('loadingSpinnerCRR');
         const crrResultsContainer = document.getElementById('coxRossRubinsteinResults');
         const calculateCRRBtn = document.getElementById('calculateBtnCRR');
-        const recalculateCRRBtn = document.getElementById('recalculateBtnCRR');
         const latticeContainer = document.getElementById('latticeContainerCRR');
 
         console.log('DOM fully loaded - CRR Elements check:', {
@@ -522,7 +513,6 @@
             loadingSpinner: crrLoadingSpinner ? 'Found' : 'Not found',
             resultsContainer: crrResultsContainer ? 'Found' : 'Not found',
             calculateBtn: calculateCRRBtn ? 'Found' : 'Not found',
-            recalculateBtn: recalculateCRRBtn ? 'Found' : 'Not found',
             latticeContainer: latticeContainer ? 'Found' : 'Not found'
         });
     });

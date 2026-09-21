@@ -136,12 +136,15 @@
                     </div>
                 </div>
                 
-                <div class="text-end mb-4">
-                    <button type="button" class="btn btn-secondary me-2" onclick="resetBlackScholesMertonForm()">
+                <div class="saeto-actions mb-4">
+                    <button type="button" class="btn btn-secondary" onclick="resetBlackScholesMertonForm()">
                         {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
                     </button>
                     <button type="button" class="btn btn-primary" id="calculateBtn" onclick="handleMertonSubmit()">
                         {% if request.session.language == 'en' %}Calculate Option Value{% else %}Calcular Valor da Opção{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
+                        {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
                     </button>
                 </div>
             </div>
@@ -291,17 +294,6 @@
                     <div id="interpretationMerton">
                         </div>
                 </div>
-            </div>
-            
-            <div class="text-center">
-                <button type="button" class="btn btn-primary" id="recalculateBtnMerton" onclick="handleMertonSubmit()">
-                    {% if request.session.language == 'en' %}Recalculate{% else %}Recalcular{% endif %}
-                </button>
-                <button type="button" class="btn btn-secondary" onclick="resetBlackScholesMertonForm()">
-                    {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
-                </button>
-                <button type="button" class="btn btn-success" id="saveProjectBtn" onclick="saveProject()" disabled>
-                    {% if language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </div>
     </div>
@@ -561,16 +553,12 @@
         const mertonLoadingSpinner = document.getElementById('loadingSpinnerMerton');
         const mertonResultsContainer = document.getElementById('blackScholesMertonResults');
         const calculateMertonBtn = document.getElementById('calculateBtn');
-        const recalculateMertonBtn = document.getElementById('recalculateBtnMerton');
 
         console.log('DOM fully loaded - Merton Elements check:', {
             form: mertonForm ? 'Found' : 'Not found',
             loadingSpinner: mertonLoadingSpinner ? 'Found' : 'Not found',
             resultsContainer: mertonResultsContainer ? 'Found' : 'Not found',
-            calculateBtn: calculateMertonBtn ? 'Found' : 'Not found',
-            recalculateBtn: recalculateMertonBtn ? 'Found' : 'Not found'
+            calculateBtn: calculateMertonBtn ? 'Found' : 'Not found'
         });
-
-        if (recalculateMertonBtn) recalculateMertonBtn.addEventListener('click', handleMertonSubmit);
     });
 </script>

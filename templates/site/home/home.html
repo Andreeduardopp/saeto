@@ -109,6 +109,14 @@
         .footnote-section p {
             margin-bottom: 0;
         }
+        /* Action row of the financial options screens: Reset · Calculate · Save Project.
+           Plain CSS because this page loads Bootstrap 4 CSS, which has no text-end, me-2 or gap. */
+        .saeto-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
     </style>
 </head>
 <body>

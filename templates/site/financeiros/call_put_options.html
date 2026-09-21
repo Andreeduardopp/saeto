@@ -25,24 +25,6 @@
         background-color: #343a40; /* Dark header for table */
         color: white;
     }
-    .btn-calculate {
-        background-color: #28a745; /* Green for calculate */
-        border-color: #28a745;
-        color: white;
-    }
-    .btn-calculate:hover {
-        background-color: #218838;
-        border-color: #1e7e34;
-    }
-    .btn-clear {
-        background-color: #ffc107; /* Amber for clear */
-        border-color: #ffc107;
-        color: #212529;
-    }
-    .btn-clear:hover {
-        background-color: #e0a800;
-        border-color: #d39e00;
-    }
     .input-group-text {
         min-width: 40px; 
         justify-content: center;
@@ -121,12 +103,10 @@
                     </div>
                 </div>
             </div>
-            <div class="row mt-2">
-                <div class="col-12">
-                    <button type="button" id="clearButton" class="btn btn-clear me-2">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
-                    <button type="button" id="calculateButton" class="btn btn-calculate">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
-                    <button type="button" id="saveProjectButton" class="btn btn-success ms-2" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
-                </div>
+            <div class="saeto-actions mt-2">
+                <button type="button" id="clearButton" class="btn btn-secondary">{% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}</button>
+                <button type="button" id="calculateButton" class="btn btn-primary">{% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}</button>
+                <button type="button" id="saveProjectButton" class="btn btn-success" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
             </div>
         </form>
     </div>
