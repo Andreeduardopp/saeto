@@ -7,9 +7,12 @@ import numpy as np
 import math
 import json
 
+from financial_options.api.views import _render_screen
+from financial_options.models import FinantialModelsChoices
+
 @login_required(login_url='/admin/login/')
 def volatilidade_template(request):
-    return render(request, "site/teoria/volatilidade.html")
+    return _render_screen(request, FinantialModelsChoices.RETURN_VOLATILITY)
 
 
 @login_required(login_url='/admin/login/')

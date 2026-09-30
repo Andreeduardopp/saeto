@@ -26,6 +26,7 @@ class FinantialModelsChoices(models.TextChoices):
     ASSET_PUT_COMBINATION = 'ASSET_PUT_COMBINATION', _('Asset + Put Combination'),
     BULL_BEAR_SPREAD = 'BULL_BEAR_SPREAD', _('Bull / Bear Spread'),
     COLLAR = 'COLLAR', _('Collar'),
+    RETURN_VOLATILITY = 'RETURN_VOLATILITY', _('Return & Volatility'),
 
 class FinantialModels(ModelPadrao):
     name = models.CharField(max_length=255, default='Financial Model')

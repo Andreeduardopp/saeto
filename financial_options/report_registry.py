@@ -22,6 +22,7 @@ class ModelSpec:
     defaults: dict = field(default_factory=dict)      # initial_data for first load and rerun
     param_labels: dict = field(default_factory=dict)  # {'pt': {key: label}, 'en': {...}}
     value_labels: dict = field(default_factory=dict)  # {'pt': {key: {value: label}}, 'en': {...}}
+    table_params: tuple = ()                          # list inputs the report shows in a table instead
 
     def label_parameters(self, parameters, language):
         """Translate parameter names and choice values, in the order of ``param_labels``."""
@@ -29,6 +30,7 @@ class ModelSpec:
         values = self.value_labels.get(language) or self.value_labels.get('pt', {})
         ordered_keys = [key for key in names if key in parameters]
         ordered_keys += [key for key in parameters if key not in names]
+        ordered_keys = [key for key in ordered_keys if key not in self.table_params]
 
         labelled = {}
         for key in ordered_keys:
@@ -287,6 +289,53 @@ def build_collar_report(parameters, results, language):
     }
 
 
+# --- Return & volatility (computed in the browser) ---------------------------
+
+def _return_percent(value, language):
+    """A return saved as a fraction (0.05), shown as a percentage (5,00%)."""
+    try:
+        return _percent(float(value) * 100, language)
+    except (TypeError, ValueError):
+        return '-'
+
+
+def build_return_volatility_report(parameters, results, language):
+    prices = parameters.get('prices') or []
+    discrete = results.get('discrete_returns') or []
+    continuous = results.get('continuous_returns') or []
+    rows = []
+    for index, price in enumerate(prices):
+        # The return in row t goes from period t-1 to t; the first period has none.
+        has_return = 0 < index <= len(discrete)
+        rows.append([
+            index + 1,
+            _number(price, language),
+            _return_percent(discrete[index - 1], language) if has_return else '-',
+            _return_percent(continuous[index - 1], language) if has_return and index <= len(continuous) else '-',
+        ])
+    headers = [
+        _t(language, 'Período', 'Period'),
+        _t(language, 'Valor do Ativo', 'Asset Value'),
+        _t(language, 'Retorno Discreto', 'Discrete Return'),
+        _t(language, 'Retorno Contínuo', 'Continuous Return'),
+    ]
+    return {
+        'results': {
+            _t(language, 'Número de retornos', 'Number of returns'): len(discrete),
+            _t(language, 'Retorno médio discreto (por período)', 'Mean discrete return (per period)'): _return_percent(results.get('mean_discrete'), language),
+            _t(language, 'Retorno médio contínuo (por período)', 'Mean continuous return (per period)'): _return_percent(results.get('mean_continuous'), language),
+            _t(language, 'Volatilidade discreta (por período)', 'Discrete volatility (per period)'): _return_percent(results.get('volatility_discrete'), language),
+            _t(language, 'Volatilidade contínua (por período)', 'Continuous volatility (per period)'): _return_percent(results.get('volatility_continuous'), language),
+        },
+        'tables': [{
+            'title': _t(language, 'Valores e retornos por período', 'Values and returns by period'),
+            'headers': headers,
+            'rows': rows,
+        }],
+        'charts': _charts({_t(language, 'Retornos Discretos vs Contínuos', 'Discrete vs Continuous Returns'): results.get('chart')}),
+    }
+
+
 # --- Registry ----------------------------------------------------------------
 
 REGISTRY: dict[str, ModelSpec] = {
@@ -459,5 +508,15 @@ REGISTRY: dict[str, ModelSpec] = {
                 'maxStockPrice': 'Max Final Stock Price', 'divisions': 'Steps',
             },
         },
+    ),
+    FinantialModelsChoices.RETURN_VOLATILITY: ModelSpec(
+        template='site/teoria/volatilidade.html',
+        build_report=build_return_volatility_report,
+        defaults={'periods': 5, 'prices': [100, 105, 98, 110, 107.5]},
+        param_labels={
+            'pt': {'periods': 'Número de Períodos', 'prices': 'Valores do Ativo'},
+            'en': {'periods': 'Number of Periods', 'prices': 'Asset Values'},
+        },
+        table_params=('prices',),
     ),
 }

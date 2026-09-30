@@ -85,6 +85,13 @@ FIXTURES = {
         {'rows': [[40, -1000, 0, 1500, 500], [45, -500, 0, 1000, 500], [50, 0, 0, 500, 500],
                   [55, 500, 0, 0, 500], [60, 1000, -500, 0, 500]], 'chart': PNG},
     ),
+    Choices.RETURN_VOLATILITY: (
+        {'periods': 5, 'prices': [100, 105, 98, 110, 107.5]},
+        {'discrete_returns': [0.05, -0.0666667, 0.122449, -0.0227273],
+         'continuous_returns': [0.0487902, -0.0689929, 0.1155182, -0.0229895],
+         'mean_discrete': 0.0207638, 'mean_continuous': 0.0180815,
+         'volatility_discrete': 0.0831412, 'volatility_continuous': 0.0810478, 'chart': PNG},
+    ),
 }
 
 # Inputs whose value is one of a fixed set, so the report has to translate the value too.
@@ -103,6 +110,7 @@ SCREEN_URL_NAMES = {
     Choices.ASSET_PUT_COMBINATION: 'asset_put_combination',
     Choices.BULL_BEAR_SPREAD: 'bull_bear_spread',
     Choices.COLLAR: 'collar_strategy_simulator',
+    Choices.RETURN_VOLATILITY: 'volatilidade_template',
 }
 
 
@@ -299,6 +307,50 @@ class ReportViewTests(LoggedInTestCase):
         self.client.force_login(User.objects.create_user('bia', password='secret'))
         response = self.client.get(reverse('view_report', args=[simulation.id]))
         self.assertEqual(response.status_code, 404)
+
+
+class ReturnVolatilityTests(LoggedInTestCase):
+    def test_report_shows_the_prices_in_the_table_not_in_the_parameters(self):
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters'], {'Número de Períodos': 5})
+        self.assertEqual(response.context['results']['Volatilidade discreta (por período)'], '8,31%')
+        self.assertEqual(response.context['results']['Volatilidade contínua (por período)'], '8,10%')
+        rows = response.context['tables'][0]['rows']
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0], [1, '100,00', '-', '-'])
+        self.assertEqual(rows[2], [3, '98,00', '-6,67%', '-6,90%'])
+
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters'], {'Number of Periods': 5})
+        self.assertEqual(response.context['results']['Mean discrete return (per period)'], '2.08%')
+        self.assertEqual(response.context['tables'][0]['rows'][4], [5, '107.50', '-2.27%', '-2.30%'])
+
+    def test_rerun_fills_the_table_with_the_saved_prices(self):
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+        simulation.parameters = {'periods': 3, 'prices': [10, 12.5, 11]}
+        simulation.save()
+        response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        self.assertContains(
+            response,
+            '<script id="volatilityInitialData" type="application/json">{"periods": 3, "prices": [10, 12.5, 11]}</script>',
+        )
+
+    def test_screen_validates_periods_and_prices(self):
+        for language, messages in (
+            ('pt', ('entre ${MIN_PERIODS} e ${MAX_PERIODS}', 'maiores que zero')),
+            ('en', ('between ${MIN_PERIODS} and ${MAX_PERIODS}', 'greater than zero')),
+        ):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('volatilidade_template'))
+                for message in messages:
+                    self.assertContains(response, message)
+                # A top-level `let` breaks the second time the screen is injected (plan §2.6).
+                self.assertNotContains(response, 'let returnsChart;')
 
 
 class RerunViewTests(LoggedInTestCase):

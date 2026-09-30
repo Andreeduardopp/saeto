@@ -1,209 +1,409 @@
-<body>
-    <div class="container mt-5">
-        <h1 id="title">{% if request.session.language == 'en' %}Return and Volatility Estimation{% else %}Estimativas de Retornos e Volatilidades{% endif %}</h1>
-        <form id="volatilityForm" onsubmit="calculateVolatility(); return false;">
-            <div class="form-group">
-                <label id="labelTimeInterval" for="timeInterval">
-                    {% if request.session.language == 'en' %}Number of Periods:{% else %}Número de Períodos:{% endif %}
-                </label>
-                <input type="number" id="timeInterval" class="form-control" 
-                       placeholder="{% if request.session.language == 'en' %}Enter the number of periods{% else %}Insira o número de períodos{% endif %}" 
-                       min="2" max="100" required>
-                <button type="button" class="btn btn-primary mt-3" id="generateTableButton" onclick="generateTable()">
-                    {% if request.session.language == 'en' %}Generate Table{% else %}Gerar Tabela{% endif %}
-                </button>
-            </div>
-        </form>
-    
-        <div id="inputTableContainer" class="mt-4" style="display: none;">
-            <h3 id="fillValuesTitle">
-                {% if request.session.language == 'en' %}Fill in the Asset Values{% else %}Preencha os Valores dos Ativos{% endif %}
-            </h3>
-            <table class="table table-bordered" id="inputTable">
-                <thead>
-                    <tr>
-                        <th id="periodColumn">
-                            {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
-                        </th>
-                        <th id="valueColumn">
-                            {% if request.session.language == 'en' %}Asset Value{% else %}Valor do Ativo{% endif %}
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Rows will be generated dynamically -->
-                </tbody>
-            </table>
-            <button type="button" class="btn btn-success" id="calculateButton" onclick="calculateVolatility()">
-                {% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}
+<div class="container mt-5">
+    <h1 id="title">{% if request.session.language == 'en' %}Return and Volatility Estimation{% else %}Estimativas de Retornos e Volatilidades{% endif %}</h1>
+    <form id="volatilityForm" novalidate>
+        {% csrf_token %}
+        <div class="form-group">
+            <label id="labelTimeInterval" for="timeInterval">
+                {% if request.session.language == 'en' %}Number of Periods (asset values):{% else %}Número de Períodos (valores do ativo):{% endif %}
+            </label>
+            <input type="number" id="timeInterval" class="form-control" value="{{ initial_data.periods }}"
+                   placeholder="{% if request.session.language == 'en' %}Enter the number of periods{% else %}Insira o número de períodos{% endif %}"
+                   min="3" max="100" step="1" required>
+            <button type="submit" class="btn btn-primary mt-3" id="generateTableButton">
+                {% if request.session.language == 'en' %}Generate Table{% else %}Gerar Tabela{% endif %}
             </button>
         </div>
-    
-        <div id="resultsContainer" class="mt-5" style="display: none;">
+    </form>
+
+    <div id="volatilityError" class="alert alert-danger mt-3" style="display: none;"></div>
+
+    <div id="inputTableContainer" class="mt-4" style="display: none;">
+        <h3 id="fillValuesTitle">
+            {% if request.session.language == 'en' %}Fill in the Asset Values{% else %}Preencha os Valores dos Ativos{% endif %}
+        </h3>
+        <table class="table table-bordered" id="inputTable">
+            <thead>
+                <tr>
+                    <th id="periodColumn">
+                        {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
+                    </th>
+                    <th id="valueColumn">
+                        {% if request.session.language == 'en' %}Asset Value{% else %}Valor do Ativo{% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be generated dynamically -->
+            </tbody>
+        </table>
+        <div class="saeto-actions">
+            <button type="button" class="btn btn-secondary" id="clearButton">
+                {% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}
+            </button>
+            <button type="button" class="btn btn-primary" id="calculateButton">
+                {% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}
+            </button>
+            <button type="button" class="btn btn-success" id="saveProjectButton" disabled>
+                {% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <div id="resultsContainer" class="mt-5" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center">
             <h3 id="resultsTitle">
                 {% if request.session.language == 'en' %}Results{% else %}Resultados{% endif %}
             </h3>
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th id="resultsPeriodColumn">
-                            {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
-                        </th>
-                        <th id="discreteReturnColumn">
-                            {% if request.session.language == 'en' %}Discrete Return{% else %}Retorno Discreto{% endif %}
-                        </th>
-                        <th id="continuousReturnColumn">
-                            {% if request.session.language == 'en' %}Continuous Return{% else %}Retorno Contínuo{% endif %}
-                        </th>
-                    </tr>
-                </thead>
-                <tbody id="resultsTable">
-                </tbody>
-            </table>
-            <div class="mt-4">
-                <canvas id="returnsChart"></canvas>
-            </div>
-            <h4 id="volatilityTitle" class="mt-4">
-                {% if request.session.language == 'en' %}Volatility{% else %}Volatilidade{% endif %}
-            </h4>
-            <p><strong id="discreteVolatilityLabel">
-                {% if request.session.language == 'en' %}Discrete Volatility:{% else %}Volatilidade Discreta:{% endif %}
-            </strong> <span id="volatilityDiscrete"></span></p>
-            <p><strong id="continuousVolatilityLabel">
-                {% if request.session.language == 'en' %}Continuous Volatility:{% else %}Volatilidade Contínua:{% endif %}
-            </strong> <span id="volatilityContinuous"></span></p>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="copyTableButton">
+                {% if request.session.language == 'en' %}Copy table (Excel){% else %}Copiar tabela (Excel){% endif %}
+            </button>
         </div>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th id="resultsPeriodColumn">
+                        {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
+                    </th>
+                    <th id="discreteReturnColumn">
+                        {% if request.session.language == 'en' %}Discrete Return{% else %}Retorno Discreto{% endif %}
+                    </th>
+                    <th id="continuousReturnColumn">
+                        {% if request.session.language == 'en' %}Continuous Return{% else %}Retorno Contínuo{% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable">
+            </tbody>
+        </table>
+        <div class="mt-4">
+            <canvas id="returnsChart"></canvas>
+        </div>
+        <h4 class="mt-4">
+            {% if request.session.language == 'en' %}Mean Return (per period){% else %}Retorno Médio (por período){% endif %}
+        </h4>
+        <p><strong>{% if request.session.language == 'en' %}Discrete:{% else %}Discreto:{% endif %}</strong> <span id="meanDiscrete"></span></p>
+        <p><strong>{% if request.session.language == 'en' %}Continuous:{% else %}Contínuo:{% endif %}</strong> <span id="meanContinuous"></span></p>
+        <h4 id="volatilityTitle" class="mt-4">
+            {% if request.session.language == 'en' %}Volatility (per period){% else %}Volatilidade (por período){% endif %}
+        </h4>
+        <p><strong id="discreteVolatilityLabel">
+            {% if request.session.language == 'en' %}Discrete Volatility:{% else %}Volatilidade Discreta:{% endif %}
+        </strong> <span id="volatilityDiscrete"></span></p>
+        <p><strong id="continuousVolatilityLabel">
+            {% if request.session.language == 'en' %}Continuous Volatility:{% else %}Volatilidade Contínua:{% endif %}
+        </strong> <span id="volatilityContinuous"></span></p>
+        <p class="text-muted small">
+            {% if request.session.language == 'en' %}Sample standard deviation (n − 1) of the returns, in the unit of the periods entered; it is not annualized.{% else %}Desvio-padrão amostral (n − 1) dos retornos, na unidade dos períodos informados; não é anualizada.{% endif %}
+        </p>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        let returnsChart;
+</div>
 
-        function generateTable() {
-            const interval = parseInt(document.getElementById("timeInterval").value);
-            const tableBody = document.getElementById("inputTable").querySelector("tbody");
-            tableBody.innerHTML = "";
-            const placeholderText = `{% if request.session.language == 'en' %}Enter the value{% else %}Digite o valor{% endif %}`;
-            for (let i = 1; i <= interval; i++) {
-                const row = `<tr>
-                                <td>${i}</td>
-                                <td><input type="number" class="form-control" id="price_${i}" placeholder="${placeholderText}" required></td>
-                             </tr>`;
-                tableBody.insertAdjacentHTML("beforeend", row);
-            }
-            document.getElementById("inputTableContainer").style.display = "block";
+{{ initial_data|json_script:"volatilityInitialData" }}
+<script>
+(function () {
+    const MIN_PERIODS = 3;
+    const MAX_PERIODS = 100;
+    const T = {
+        pt: {
+            placeholder: 'Digite o valor',
+            invalidPeriods: `O número de períodos deve ser um número inteiro entre ${MIN_PERIODS} e ${MAX_PERIODS}.`,
+            missingPrice: 'Preencha todos os valores dos ativos.',
+            invalidPrice: 'Os valores dos ativos devem ser maiores que zero.',
+            discreteReturn: 'Retorno Discreto',
+            continuousReturn: 'Retorno Contínuo',
+            chartTitle: 'Retornos Discretos vs Contínuos',
+            period: 'Período',
+            assetValue: 'Valor do Ativo',
+            meanReturn: 'Retorno médio',
+            volatility: 'Volatilidade',
+            copied: 'Copiado!',
+            copyFailed: 'Não foi possível copiar. Selecione a tabela e use Ctrl+C.',
+        },
+        en: {
+            placeholder: 'Enter the value',
+            invalidPeriods: `The number of periods must be a whole number between ${MIN_PERIODS} and ${MAX_PERIODS}.`,
+            missingPrice: 'Please fill in all asset values.',
+            invalidPrice: 'Asset values must be greater than zero.',
+            discreteReturn: 'Discrete Return',
+            continuousReturn: 'Continuous Return',
+            chartTitle: 'Discrete vs Continuous Returns',
+            period: 'Period',
+            assetValue: 'Asset Value',
+            meanReturn: 'Mean return',
+            volatility: 'Volatility',
+            copied: 'Copied!',
+            copyFailed: 'Could not copy. Select the table and press Ctrl+C.',
+        },
+    };
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const t = T[lang] || T.pt;
+    const initialData = JSON.parse(document.getElementById('volatilityInitialData').textContent);
+
+    const form = document.getElementById('volatilityForm');
+    const periodsInput = document.getElementById('timeInterval');
+    const inputBody = document.getElementById('inputTable').querySelector('tbody');
+    const inputContainer = document.getElementById('inputTableContainer');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const errorBox = document.getElementById('volatilityError');
+    const saveBtn = document.getElementById('saveProjectButton');
+
+    let returnsChart = null;
+    // Inputs and results of the last successful calculation; Save sends exactly this.
+    let lastRun = null;
+
+    const setLastRun = (run) => {
+        lastRun = run;
+        saveBtn.disabled = !run;
+    };
+
+    const showError = (message) => {
+        errorBox.textContent = message;
+        errorBox.style.display = message ? 'block' : 'none';
+    };
+
+    const percent = (value) => `${(value * 100).toFixed(2)}%`;
+
+    const hideResults = () => {
+        setLastRun(null);
+        resultsContainer.style.display = 'none';
+        if (returnsChart) {
+            returnsChart.destroy();
+            returnsChart = null;
         }
-    
-        function calculateVolatility() {
-            const interval = parseInt(document.getElementById("timeInterval").value);
-            const prices = [];
-            for (let i = 1; i <= interval; i++) {
-                const price = parseFloat(document.getElementById(`price_${i}`).value);
-                if (isNaN(price)) {
-                    alert("{% if request.session.language == 'en' %}Please fill in all asset values.{% else %}Preencha todos os valores dos ativos.{% endif %}");
-                    return;
-                }
-                prices.push(price);
+    };
+
+    function readPeriods() {
+        const periods = Number(periodsInput.value);
+        if (!Number.isInteger(periods) || periods < MIN_PERIODS || periods > MAX_PERIODS) {
+            return null;
+        }
+        return periods;
+    }
+
+    function priceInputs() {
+        return Array.from(inputBody.querySelectorAll('input'));
+    }
+
+    // Builds one row per period, keeping the values already typed in the rows that stay.
+    function buildTable(periods, prices) {
+        const previous = priceInputs().map(input => input.value);
+        inputBody.innerHTML = '';
+        for (let i = 1; i <= periods; i++) {
+            const row = inputBody.insertRow();
+            row.insertCell().textContent = i;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'form-control';
+            input.id = `price_${i}`;
+            input.min = '0';
+            input.step = 'any';
+            input.placeholder = t.placeholder;
+            const value = prices ? prices[i - 1] : previous[i - 1];
+            input.value = value === undefined || value === null ? '' : value;
+            row.insertCell().appendChild(input);
+        }
+        inputContainer.style.display = 'block';
+    }
+
+    function generateTable() {
+        hideResults();
+        const periods = readPeriods();
+        if (periods === null) {
+            showError(t.invalidPeriods);
+            return;
+        }
+        showError('');
+        buildTable(periods);
+    }
+
+    function readPrices() {
+        const prices = [];
+        for (const input of priceInputs()) {
+            if (input.value.trim() === '') {
+                return { error: t.missingPrice };
             }
-        
-            const discreteReturns = [];
-            const continuousReturns = [];
-            for (let i = 1; i < prices.length; i++) {
-                const discreteReturn = (prices[i] - prices[i - 1]) / prices[i - 1];
-                const continuousReturn = Math.log(prices[i] / prices[i - 1]);
-                discreteReturns.push(discreteReturn);
-                continuousReturns.push(continuousReturn);
+            const price = Number(input.value);
+            if (!Number.isFinite(price)) {
+                return { error: t.missingPrice };
             }
-
-            // --- START OF CORRECTION ---
-            
-            const n = discreteReturns.length;
-            let volatilityDiscrete = 0;
-            let volatilityContinuous = 0;
-
-            // Check if we have enough data to calculate standard deviation
-            if (n > 1) {
-                // 1. Calculate Mean (Average) of returns
-                const meanDiscrete = discreteReturns.reduce((acc, r) => acc + r, 0) / n;
-                const meanContinuous = continuousReturns.reduce((acc, r) => acc + r, 0) / n;
-
-                // 2. Calculate Variance (using N-1 for sample standard deviation)
-                const varianceDiscrete = discreteReturns.reduce((acc, r) => acc + Math.pow(r - meanDiscrete, 2), 0) / (n - 1);
-                const varianceContinuous = continuousReturns.reduce((acc, r) => acc + Math.pow(r - meanContinuous, 2), 0) / (n - 1);
-
-                // 3. Volatility is the square root of the variance (Standard Deviation)
-                volatilityDiscrete = Math.sqrt(varianceDiscrete);
-                volatilityContinuous = Math.sqrt(varianceContinuous);
-
-                document.getElementById("volatilityDiscrete").textContent = `${(volatilityDiscrete * 100).toFixed(2)}%`;
-                document.getElementById("volatilityContinuous").textContent = `${(volatilityContinuous * 100).toFixed(2)}%`;
-            } else {
-                // Not enough data to calculate volatility
-                document.getElementById("volatilityDiscrete").textContent = "N/A (Need > 2 periods)";
-                document.getElementById("volatilityContinuous").textContent = "N/A (Need > 2 periods)";
+            if (price <= 0) {
+                return { error: t.invalidPrice };
             }
-            
-            // --- END OF CORRECTION ---
-        
-            const resultsTable = document.getElementById("resultsTable");
-            resultsTable.innerHTML = "";
-            for (let i = 0; i < discreteReturns.length; i++) {
-                const row = `<tr>
-                                <td>${i + 1}</td>
-                                <td>${(discreteReturns[i] * 100).toFixed(2)}%</td>
-                                <td>${(continuousReturns[i] * 100).toFixed(2)}%</td>
-                             </tr>`;
-                resultsTable.insertAdjacentHTML("beforeend", row);
-            }
-        
-            document.getElementById("resultsContainer").style.display = "block";
+            prices.push(price);
+        }
+        return { prices };
+    }
 
-            const ctx = document.getElementById('returnsChart').getContext('2d');
-            const labels = Array.from({ length: discreteReturns.length }, (_, i) => i + 1);
+    const mean = (values) => values.reduce((acc, value) => acc + value, 0) / values.length;
 
-            if (returnsChart) {
-                returnsChart.destroy();
-            }
+    // Sample standard deviation (n − 1).
+    function sampleStd(values) {
+        const m = mean(values);
+        return Math.sqrt(values.reduce((acc, value) => acc + (value - m) ** 2, 0) / (values.length - 1));
+    }
 
-            returnsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '{% if request.session.language == 'en' %}Discrete Return{% else %}Retorno Discreto{% endif %}',
-                        data: discreteReturns.map(r => r * 100),
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1
-                    }, {
-                        label: '{% if request.session.language == 'en' %}Continuous Return{% else %}Retorno Contínuo{% endif %}',
-                        data: continuousReturns.map(r => r * 100),
-                        borderColor: 'rgb(255, 99, 132)',
-                        tension: 0.1
-                    }]
+    function calculateVolatility() {
+        hideResults();
+        const { prices, error } = readPrices();
+        if (error) {
+            showError(error);
+            return;
+        }
+        if (prices.length < MIN_PERIODS) {
+            showError(t.invalidPeriods);
+            return;
+        }
+        showError('');
+
+        const discreteReturns = [];
+        const continuousReturns = [];
+        for (let i = 1; i < prices.length; i++) {
+            discreteReturns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+            continuousReturns.push(Math.log(prices[i] / prices[i - 1]));
+        }
+
+        const results = {
+            discrete_returns: discreteReturns,
+            continuous_returns: continuousReturns,
+            mean_discrete: mean(discreteReturns),
+            mean_continuous: mean(continuousReturns),
+            volatility_discrete: sampleStd(discreteReturns),
+            volatility_continuous: sampleStd(continuousReturns),
+        };
+
+        // Each return goes from one period to the next, so it is labelled "1 → 2".
+        const labels = discreteReturns.map((_, i) => `${i + 1} → ${i + 2}`);
+        const resultsTable = document.getElementById('resultsTable');
+        resultsTable.innerHTML = '';
+        labels.forEach((label, i) => {
+            const row = resultsTable.insertRow();
+            row.insertCell().textContent = label;
+            row.insertCell().textContent = percent(discreteReturns[i]);
+            row.insertCell().textContent = percent(continuousReturns[i]);
+        });
+        document.getElementById('meanDiscrete').textContent = percent(results.mean_discrete);
+        document.getElementById('meanContinuous').textContent = percent(results.mean_continuous);
+        document.getElementById('volatilityDiscrete').textContent = percent(results.volatility_discrete);
+        document.getElementById('volatilityContinuous').textContent = percent(results.volatility_continuous);
+        resultsContainer.style.display = 'block';
+
+        returnsChart = new Chart(document.getElementById('returnsChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: t.discreteReturn,
+                    data: discreteReturns.map(r => r * 100),
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                }, {
+                    label: t.continuousReturn,
+                    data: continuousReturns.map(r => r * 100),
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1,
+                }],
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: t.chartTitle },
                 },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: '{% if request.session.language == 'en' %}Discrete vs Continuous Returns{% else %}Retornos Discretos vs Contínuos{% endif %}'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toFixed(2) + '%';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }        
-    </script>
-    </body>
-    
+                scales: {
+                    y: { ticks: { callback: value => value.toFixed(2) + '%' } },
+                },
+            },
+        });
+
+        setLastRun({ parameters: { periods: prices.length, prices }, results });
+    }
+
+    // --- Copy to Excel ----------------------------------------------------------
+    // Tab-separated text, one line per row: Excel puts each value in its own cell.
+    // Numbers use the decimal separator of the screen's language, so Excel in that
+    // language reads them as numbers (and "5,1234%" as a percentage), with 4 decimals
+    // instead of the 2 shown on screen.
+    const decimal = lang === 'en' ? '.' : ',';
+    const excelNumber = (value, decimals) => value.toFixed(decimals).replace('.', decimal);
+    const excelPercent = (value) => `${excelNumber(value * 100, 4)}%`;
+
+    function tableAsTsv(run) {
+        const { prices } = run.parameters;
+        const r = run.results;
+        const lines = [[t.period, t.assetValue, t.discreteReturn, t.continuousReturn]];
+        prices.forEach((price, i) => {
+            // The return in row t goes from period t-1 to t; the first period has none.
+            lines.push([
+                i + 1,
+                String(price).replace('.', decimal),  // as typed, no rounding
+                i === 0 ? '' : excelPercent(r.discrete_returns[i - 1]),
+                i === 0 ? '' : excelPercent(r.continuous_returns[i - 1]),
+            ]);
+        });
+        lines.push([]);
+        lines.push([t.meanReturn, '', excelPercent(r.mean_discrete), excelPercent(r.mean_continuous)]);
+        lines.push([t.volatility, '', excelPercent(r.volatility_discrete), excelPercent(r.volatility_continuous)]);
+        return lines.map(cells => cells.join('\t')).join('\r\n');
+    }
+
+    // navigator.clipboard needs HTTPS (or localhost); fall back to execCommand elsewhere.
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            ok ? resolve() : reject(new Error('execCommand copy failed'));
+        });
+    }
+
+    const copyBtn = document.getElementById('copyTableButton');
+    copyBtn.addEventListener('click', () => {
+        if (!lastRun) return;
+        const originalHtml = copyBtn.innerHTML;
+        copyText(tableAsTsv(lastRun))
+            .then(() => {
+                copyBtn.textContent = t.copied;
+                setTimeout(() => { copyBtn.innerHTML = originalHtml; }, 2000);
+            })
+            .catch(() => showError(t.copyFailed));
+    });
+
+    // Back to the loaded values: the defaults, or the saved run on rerun.
+    function resetToInitial() {
+        hideResults();
+        showError('');
+        const prices = Array.isArray(initialData.prices) ? initialData.prices : [];
+        periodsInput.value = prices.length || initialData.periods;
+        buildTable(Number(periodsInput.value) || MIN_PERIODS, prices);
+    }
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();  // Enter in the periods field generates the table
+        generateTable();
+    });
+    document.getElementById('calculateButton').addEventListener('click', calculateVolatility);
+    document.getElementById('clearButton').addEventListener('click', resetToInitial);
+
+    saveBtn.addEventListener('click', () => {
+        if (!lastRun || !returnsChart) return;
+        saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'RETURN_VOLATILITY',
+            parameters: lastRun.parameters,
+            results: { ...lastRun.results, chart: returnsChart.toBase64Image() },
+            lang: lang,
+        });
+    });
+
+    resetToInitial();
+})();
+</script>
