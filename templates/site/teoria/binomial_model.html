@@ -39,7 +39,8 @@
         </button>
     </div>
 
-    <form id="binomialForm" onsubmit="event.preventDefault(); calculateOptions();">
+    <form id="binomialForm" novalidate>
+        {% csrf_token %}
         <div class="row">
             <div class="col-md-6">
                 <div class="card mb-4">
@@ -52,8 +53,8 @@
                                 {% if request.session.language == 'en' %}Initial Project Value (V₀):{% else %}Valor Inicial do Projeto (V₀):{% endif %}
                             </label>
                             <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                <input type="number" id="initialValue" class="form-control" min="1" value="1000000" required>
+                                <span class="input-group-text">R$</span>
+                                <input type="number" id="initialValue" class="form-control" min="1" value="{{ initial_data.initialValue }}" required>
                             </div>
                         </div>
                         
@@ -62,8 +63,8 @@
                                 {% if request.session.language == 'en' %}Strike Price (Investment Cost):{% else %}Preço de Exercício (Custo do Investimento):{% endif %}
                             </label>
                             <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                <input type="number" id="strikePrice" class="form-control" min="1" value="900000" required>
+                                <span class="input-group-text">R$</span>
+                                <input type="number" id="strikePrice" class="form-control" min="1" value="{{ initial_data.strikePrice }}" required>
                             </div>
                         </div>
                         
@@ -71,7 +72,7 @@
                             <label for="timeToMaturity">
                                 {% if request.session.language == 'en' %}Time to Maturity (years):{% else %}Tempo até o Vencimento (anos):{% endif %}
                             </label>
-                            <input type="number" id="timeToMaturity" class="form-control" min="0.1" step="0.1" value="5" required>
+                            <input type="number" id="timeToMaturity" class="form-control" min="0.1" step="0.1" value="{{ initial_data.timeToMaturity }}" required>
                         </div>
                         
                         <div class="form-group mb-3">
@@ -79,7 +80,7 @@
                                 {% if request.session.language == 'en' %}Risk-Free Rate:{% else %}Taxa Livre de Risco:{% endif %}
                             </label>
                             <div class="input-group">
-                                <input type="number" id="riskFreeRate" class="form-control" min="0" max="100" step="0.1" value="5" required>
+                                <input type="number" id="riskFreeRate" class="form-control" min="0" max="100" step="0.1" value="{{ initial_data.riskFreeRate }}" required>
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
@@ -98,7 +99,7 @@
                                 {% if request.session.language == 'en' %}Annual Volatility (σ):{% else %}Volatilidade Anual (σ):{% endif %}
                             </label>
                             <div class="input-group">
-                                <input type="number" id="volatility" class="form-control" min="1" max="100" step="0.1" value="20" required>
+                                <input type="number" id="volatility" class="form-control" min="1" max="100" step="0.1" value="{{ initial_data.volatility }}" required>
                                 <span class="input-group-text">%</span>
                             </div>
                         </div>
@@ -107,7 +108,7 @@
                             <label for="steps">
                                 {% if request.session.language == 'en' %}Number of Time Steps:{% else %}Número de Passos de Tempo:{% endif %}
                             </label>
-                            <input type="number" id="steps" class="form-control" min="1" max="50" value="5" required>
+                            <input type="number" id="steps" class="form-control" min="1" max="50" step="1" value="{{ initial_data.steps }}" required>
                         </div>
                         
                         <div class="form-group mb-3">
@@ -115,8 +116,8 @@
                                 {% if request.session.language == 'en' %}Option Type:{% else %}Tipo de Opção:{% endif %}
                             </label>
                             <select id="optionType" class="form-select">
-                                <option value="call">{% if request.session.language == 'en' %}Call Option (Option to Invest){% else %}Opção de Compra (Opção de Investir){% endif %}</option>
-                                <option value="put">{% if request.session.language == 'en' %}Put Option (Option to Abandon){% else %}Opção de Venda (Opção de Abandonar){% endif %}</option>
+                                <option value="call" {% if initial_data.optionType != 'put' %}selected{% endif %}>{% if request.session.language == 'en' %}Call Option (Option to Invest){% else %}Opção de Compra (Opção de Investir){% endif %}</option>
+                                <option value="put" {% if initial_data.optionType == 'put' %}selected{% endif %}>{% if request.session.language == 'en' %}Put Option (Option to Abandon){% else %}Opção de Venda (Opção de Abandonar){% endif %}</option>
                             </select>
                         </div>
                         
@@ -125,13 +126,15 @@
                                 {% if request.session.language == 'en' %}Exercise Style:{% else %}Estilo de Exercício:{% endif %}
                             </label>
                             <select id="exerciseStyle" class="form-select">
-                                <option value="european">{% if request.session.language == 'en' %}European (Exercise at maturity only){% else %}Europeia (Exercício apenas no vencimento){% endif %}</option>
-                                <option value="american">{% if request.session.language == 'en' %}American (Exercise at any time){% else %}Americana (Exercício a qualquer momento){% endif %}</option>
+                                <option value="european" {% if initial_data.exerciseStyle != 'american' %}selected{% endif %}>{% if request.session.language == 'en' %}European (Exercise at maturity only){% else %}Europeia (Exercício apenas no vencimento){% endif %}</option>
+                                <option value="american" {% if initial_data.exerciseStyle == 'american' %}selected{% endif %}>{% if request.session.language == 'en' %}American (Exercise at any time){% else %}Americana (Exercício a qualquer momento){% endif %}</option>
                             </select>
                         </div>
                     </div>
                 </div>
                 
+                <div id="binomialError" class="alert alert-danger" style="display: none;"></div>
+
                 <div class="text-end mb-4">
                     <button type="submit" class="btn btn-primary">
                         {% if request.session.language == 'en' %}Calculate Option Value{% else %}Calcular Valor da Opção{% endif %}
@@ -230,11 +233,14 @@
             </div>
             
             <div class="text-center">
-                <button type="button" class="btn btn-primary" onclick="calculateOptions()">
+                <button type="button" class="btn btn-primary" id="recalculateButton">
                     {% if request.session.language == 'en' %}Recalculate{% else %}Recalcular{% endif %}
                 </button>
-                <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                <button type="button" class="btn btn-secondary" id="resetButton">
                     {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
+                </button>
+                <button type="button" class="btn btn-success" id="saveProjectButton" disabled>
+                    {% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
                 </button>
             </div>
         </div>
@@ -366,148 +372,207 @@
   </div>
 </div>
 <script>
-    function calculateOptions() {
-        // Get input parameters
-        const S0 = parseFloat(document.getElementById('initialValue').value);
-        const K = parseFloat(document.getElementById('strikePrice').value);
-        const T = parseFloat(document.getElementById('timeToMaturity').value);
-        const r = parseFloat(document.getElementById('riskFreeRate').value) / 100;
-        const sigma = parseFloat(document.getElementById('volatility').value) / 100;
-        const N = parseInt(document.getElementById('steps').value);
-        const optionType = document.getElementById('optionType').value;
-        const exerciseStyle = document.getElementById('exerciseStyle').value;
-        
-        const dt = T / N;
-        
+(function () {
+    const MAX_STEPS = 50;
+    const T = {
+        pt: {
+            invalidValue: 'O valor inicial do projeto e o preço de exercício devem ser maiores que zero.',
+            invalidTime: 'O tempo até o vencimento deve ser maior que zero.',
+            invalidRate: 'A taxa livre de risco deve estar entre 0% e 100%.',
+            invalidVolatility: 'A volatilidade deve estar entre 1% e 100%.',
+            invalidSteps: `O número de passos deve ser um número inteiro entre 1 e ${MAX_STEPS}.`,
+            invalidProbability: 'Com esses parâmetros a probabilidade neutra ao risco fica fora do intervalo de 0 a 1 (σ·√Δt ≤ r·Δt), e o modelo não tem solução. Aumente a volatilidade ou o número de passos, ou reduza a taxa livre de risco.',
+            timeStep: 'Passo de Tempo',
+            projectValue: 'Valor do Projeto',
+            optionValue: 'Valor da Opção',
+            node: 'nó',
+            latticeNote: 'Nó k = k descidas desde o início; a primeira linha é a trajetória só de subidas.',
+        },
+        en: {
+            invalidValue: 'The initial project value and the strike price must be greater than zero.',
+            invalidTime: 'The time to maturity must be greater than zero.',
+            invalidRate: 'The risk-free rate must be between 0% and 100%.',
+            invalidVolatility: 'The volatility must be between 1% and 100%.',
+            invalidSteps: `The number of steps must be a whole number between 1 and ${MAX_STEPS}.`,
+            invalidProbability: 'With these inputs the risk-neutral probability falls outside 0 to 1 (σ·√Δt ≤ r·Δt), so the model has no solution. Increase the volatility or the number of steps, or lower the risk-free rate.',
+            timeStep: 'Time Step',
+            projectValue: 'Project Value',
+            optionValue: 'Option Value',
+            node: 'node',
+            latticeNote: 'Node k = k down moves from the start; the first row is the all-up path.',
+        },
+    };
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const t = T[lang] || T.pt;
+    const locale = lang === 'en' ? 'en-US' : 'pt-BR';
+
+    const form = document.getElementById('binomialForm');
+    const errorBox = document.getElementById('binomialError');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const latticeContainer = document.getElementById('latticeContainer');
+    const saveBtn = document.getElementById('saveProjectButton');
+
+    // Inputs and results of the last successful calculation; Save sends exactly this.
+    let lastRun = null;
+
+    const setLastRun = (run) => {
+        lastRun = run;
+        saveBtn.disabled = !run;
+    };
+
+    const showError = (message) => {
+        errorBox.textContent = message;
+        errorBox.style.display = message ? 'block' : 'none';
+    };
+
+    const money = (value) => value.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
+    const fixed = (value, decimals) => value.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+
+    function hideResults() {
+        setLastRun(null);
+        resultsContainer.style.display = 'none';
+        latticeContainer.innerHTML = '';
+    }
+
+    function readParameters() {
+        const number = (id) => parseFloat(document.getElementById(id).value);
+        const p = {
+            initialValue: number('initialValue'),
+            strikePrice: number('strikePrice'),
+            timeToMaturity: number('timeToMaturity'),
+            riskFreeRate: number('riskFreeRate'),
+            volatility: number('volatility'),
+            steps: Number(document.getElementById('steps').value),
+            optionType: document.getElementById('optionType').value,
+            exerciseStyle: document.getElementById('exerciseStyle').value,
+        };
+        if (!(p.initialValue > 0) || !(p.strikePrice > 0)) return { error: t.invalidValue };
+        if (!(p.timeToMaturity > 0)) return { error: t.invalidTime };
+        if (!(p.riskFreeRate >= 0 && p.riskFreeRate <= 100)) return { error: t.invalidRate };
+        if (!(p.volatility >= 1 && p.volatility <= 100)) return { error: t.invalidVolatility };
+        if (!Number.isInteger(p.steps) || p.steps < 1 || p.steps > MAX_STEPS) return { error: t.invalidSteps };
+        return { parameters: p };
+    }
+
+    // Cox-Ross-Rubinstein lattice: tree[i][j] is the node after i steps with j up moves.
+    // Returns null when the risk-neutral probability falls outside (0, 1).
+    function binomial({ initialValue: S0, strikePrice: K, timeToMaturity, riskFreeRate, volatility, steps: N, optionType, exerciseStyle }) {
+        const r = riskFreeRate / 100;
+        const sigma = volatility / 100;
+        const dt = timeToMaturity / N;
         const u = Math.exp(sigma * Math.sqrt(dt));
         const d = 1 / u;
-        
-        // Calculate risk-neutral probability
         const p = (Math.exp(r * dt) - d) / (u - d);
-        
-        const stockTree = Array(N + 1).fill().map(() => Array(N + 1).fill(0));
-        stockTree[0][0] = S0;
-        
-        // Fill in the stock price tree
-        for (let i = 1; i <= N; i++) {
-            for (let j = 0; j <= i; j++) {
-                stockTree[i][j] = stockTree[0][0] * Math.pow(u, j) * Math.pow(d, i - j);
-            }
+        if (!(p > 0 && p < 1)) return null;
+
+        const payoff = (value) => optionType === 'call' ? Math.max(0, value - K) : Math.max(0, K - value);
+        const valueTree = [];
+        for (let i = 0; i <= N; i++) {
+            valueTree.push(Array.from({ length: i + 1 }, (_, j) => S0 * Math.pow(u, j) * Math.pow(d, i - j)));
         }
-        
-        const optionTree = Array(N + 1).fill().map(() => Array(N + 1).fill(0));
-        
-        // Fill in terminal option values
-        for (let j = 0; j <= N; j++) {
-            if (optionType === 'call') {
-                optionTree[N][j] = Math.max(0, stockTree[N][j] - K);
-            } else { // put option
-                optionTree[N][j] = Math.max(0, K - stockTree[N][j]);
-            }
-        }
-        
-        // Calculate option values via backward induction
+        const optionTree = valueTree.map(row => row.slice());
+        optionTree[N] = valueTree[N].map(payoff);
+        const discount = Math.exp(-r * dt);
         for (let i = N - 1; i >= 0; i--) {
             for (let j = 0; j <= i; j++) {
-                // Expected option value (discounted)
-                const expectedValue = Math.exp(-r * dt) * (p * optionTree[i + 1][j + 1] + (1 - p) * optionTree[i + 1][j]);
-                
-                if (exerciseStyle === 'american') {
-                    // For American options, check for early exercise
-                    const exerciseValue = optionType === 'call' 
-                        ? Math.max(0, stockTree[i][j] - K)
-                        : Math.max(0, K - stockTree[i][j]);
-                    optionTree[i][j] = Math.max(expectedValue, exerciseValue);
-                } else {
-                    // For European options, just use the expected value
-                    optionTree[i][j] = expectedValue;
-                }
+                const expected = discount * (p * optionTree[i + 1][j + 1] + (1 - p) * optionTree[i + 1][j]);
+                optionTree[i][j] = exerciseStyle === 'american' ? Math.max(expected, payoff(valueTree[i][j])) : expected;
             }
         }
-        
-        // Calculate the traditional NPV
-        const traditionalNPV = S0 - K;
-        
-        // Calculate the expanded NPV (traditional NPV + option value)
-        const expandedNPV = traditionalNPV + optionTree[0][0];
-        
-        // Calculate value of flexibility
-        const flexibilityValue = optionTree[0][0];
-        
-        // Calculate option value / investment cost ratio
-        const optionRatio = optionTree[0][0] / K;
-        
-        // Display results
-        document.getElementById('optionValue').textContent = '$' + optionTree[0][0].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('upFactor').textContent = u.toFixed(4);
-        document.getElementById('downFactor').textContent = d.toFixed(4);
-        document.getElementById('probability').textContent = (p * 100).toFixed(2) + '%';
-        document.getElementById('deltaT').textContent = dt.toFixed(4);
-        
-        document.getElementById('traditionalNPV').textContent = '$' + traditionalNPV.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('expandedNPV').textContent = '$' + expandedNPV.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('flexibilityValue').textContent = '$' + flexibilityValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('optionRatio').textContent = optionRatio.toFixed(4);
-        
-        // Visualize binomial lattice
-        visualizeLattice(stockTree, optionTree, N);
-        
-        // Show results
-        document.getElementById('resultsContainer').style.display = 'block';
+
+        const optionValue = optionTree[0][0];
+        const traditionalNpv = S0 - K;
+        return {
+            option_value: optionValue,
+            up_factor: u,
+            down_factor: d,
+            probability: p,
+            dt: dt,
+            traditional_npv: traditionalNpv,
+            expanded_npv: traditionalNpv + optionValue,
+            flexibility_value: optionValue,
+            option_ratio: optionValue / K,
+            value_tree: valueTree,
+            option_tree: optionTree,
+        };
     }
-    
-    function visualizeLattice(stockTree, optionTree, N) {
-        const container = document.getElementById('latticeContainer');
-        container.innerHTML = '';
-        
-        // Create lattice visualization HTML
-        let html = '<div class="binomial-lattice">';
-        
-        // Add table for the lattice
-        html += '<table class="table table-bordered table-sm">';
-        
-        // Add headers
-        html += '<thead><tr><th>Time Step</th>';
-        for (let t = 0; t <= N; t++) {
-            html += `<th>t=${t}</th>`;
-        }
+
+    function showResults(results) {
+        document.getElementById('optionValue').textContent = money(results.option_value);
+        document.getElementById('upFactor').textContent = fixed(results.up_factor, 4);
+        document.getElementById('downFactor').textContent = fixed(results.down_factor, 4);
+        document.getElementById('probability').textContent = fixed(results.probability * 100, 2) + '%';
+        document.getElementById('deltaT').textContent = fixed(results.dt, 4);
+        document.getElementById('traditionalNPV').textContent = money(results.traditional_npv);
+        document.getElementById('expandedNPV').textContent = money(results.expanded_npv);
+        document.getElementById('flexibilityValue').textContent = money(results.flexibility_value);
+        document.getElementById('optionRatio').textContent = fixed(results.option_ratio, 4);
+        showLattice(results.value_tree, results.option_tree);
+        resultsContainer.style.display = 'block';
+    }
+
+    // Row k holds the nodes with k down moves, so the top row is the all-up path.
+    function showLattice(valueTree, optionTree) {
+        const N = valueTree.length - 1;
+        const row = (label, tree, k, className) => {
+            let cells = `<tr${className ? ` class="${className}"` : ''}><td>${label} (${t.node} ${k})</td>`;
+            for (let step = 0; step <= N; step++) {
+                cells += step >= k ? `<td>${money(tree[step][step - k])}</td>` : '<td>-</td>';
+            }
+            return cells + '</tr>';
+        };
+        let html = `<p class="text-muted small">${t.latticeNote}</p>`;
+        html += '<div class="binomial-lattice"><table class="table table-bordered table-sm">';
+        html += `<thead><tr><th>${t.timeStep}</th>`;
+        for (let step = 0; step <= N; step++) html += `<th>t=${step}</th>`;
         html += '</tr></thead><tbody>';
-        
-        // Add stock price and option value rows
-        for (let j = N; j >= 0; j--) {
-            // Stock price row
-            html += '<tr><td>Stock Price (Node ' + j + ')</td>';
-            for (let t = 0; t <= N; t++) {
-                if (t >= j) {
-                    const index = t - j;
-                    html += `<td>$${stockTree[t][index].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-                } else {
-                    html += '<td>-</td>';
-                }
-            }
-            html += '</tr>';
-            
-            // Option value row
-            html += '<tr class="table-light"><td>Option Value (Node ' + j + ')</td>';
-            for (let t = 0; t <= N; t++) {
-                if (t >= j) {
-                    const index = t - j;
-                    html += `<td>$${optionTree[t][index].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-                } else {
-                    html += '<td>-</td>';
-                }
-            }
-            html += '</tr>';
+        for (let k = 0; k <= N; k++) {
+            html += row(t.projectValue, valueTree, k, '');
+            html += row(t.optionValue, optionTree, k, 'table-light');
         }
-        
         html += '</tbody></table></div>';
-        
-        container.innerHTML = html;
+        latticeContainer.innerHTML = html;
     }
-    
-    function resetForm() {
-        document.getElementById('binomialForm').reset();
-        document.getElementById('resultsContainer').style.display = 'none';
-        document.getElementById('latticeContainer').innerHTML = '';
+
+    function calculate() {
+        hideResults();
+        const { parameters, error } = readParameters();
+        if (error) {
+            showError(error);
+            return;
+        }
+        const results = binomial(parameters);
+        if (!results) {
+            showError(t.invalidProbability);
+            return;
+        }
+        showError('');
+        showResults(results);
+        setLastRun({ parameters, results });
     }
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        calculate();
+    });
+    document.getElementById('recalculateButton').addEventListener('click', calculate);
+    // Back to the loaded values: the defaults, or the saved run on rerun.
+    document.getElementById('resetButton').addEventListener('click', () => {
+        form.reset();
+        showError('');
+        hideResults();
+    });
+
+    saveBtn.addEventListener('click', () => {
+        if (!lastRun) return;
+        saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'BINOMIAL_REAL_OPTION',
+            parameters: lastRun.parameters,
+            results: lastRun.results,
+            lang: lang,
+        });
+    });
+})();
 </script>

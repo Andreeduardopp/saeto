@@ -8,6 +8,7 @@ the coverage test in ``financial_options/tests.py`` passes again.
 from dataclasses import dataclass, field
 from typing import Callable
 
+from estocasticos.labels import stat_label
 from financial_options.models import FinantialModelsChoices
 
 
@@ -336,6 +337,295 @@ def build_return_volatility_report(parameters, results, language):
     }
 
 
+# --- Real options: binomial model (computed in the browser) ------------------
+
+# Above this many steps the lattice table runs for pages (N=50 is 1,326 nodes),
+# so the report leaves it out and says so.
+BINOMIAL_REPORT_MAX_STEPS = 20
+
+
+def _lattice_rows(value_tree, option_tree, language):
+    """One row per node: step, up moves, project value, option value; highest node first."""
+    rows = []
+    for step, (values, options) in enumerate(zip(value_tree or [], option_tree or [])):
+        for ups in range(len(values) - 1, -1, -1):
+            option = options[ups] if ups < len(options) else None
+            rows.append([step, ups, _money(values[ups], language), _money(option, language)])
+    return rows
+
+
+def build_binomial_real_option_report(parameters, results, language):
+    value_tree = results.get('value_tree') or []
+    steps = len(value_tree) - 1
+    lattice = {
+        'title': _t(language, 'Treliça binomial', 'Binomial lattice'),
+        'headers': [
+            _t(language, 'Passo (t)', 'Step (t)'),
+            _t(language, 'Subidas', 'Up moves'),
+            _t(language, 'Valor do Projeto', 'Project Value'),
+            _t(language, 'Valor da Opção', 'Option Value'),
+        ],
+        'rows': [],
+    }
+    if steps > BINOMIAL_REPORT_MAX_STEPS:
+        lattice['note'] = _t(
+            language,
+            f'A treliça tem {steps} passos e não é impressa no relatório (limite: {BINOMIAL_REPORT_MAX_STEPS} passos). Use Simular Novamente para vê-la na tela.',
+            f'The lattice has {steps} steps and is not printed in the report (limit: {BINOMIAL_REPORT_MAX_STEPS} steps). Use Simulate Again to see it on screen.',
+        )
+    else:
+        lattice['rows'] = _lattice_rows(value_tree, results.get('option_tree'), language)
+
+    probability = results.get('probability')
+    return {
+        'results': {
+            _t(language, 'Valor da Opção Real', 'Real Option Value'): _money(results.get('option_value'), language),
+            _t(language, 'Fator de Subida (u)', 'Up Factor (u)'): _number(results.get('up_factor'), language, 4),
+            _t(language, 'Fator de Descida (d)', 'Down Factor (d)'): _number(results.get('down_factor'), language, 4),
+            _t(language, 'Probabilidade Neutra ao Risco (p)', 'Risk-Neutral Probability (p)'): _return_percent(probability, language),
+            _t(language, 'Passo de Tempo (Δt, anos)', 'Time Step (Δt, years)'): _number(results.get('dt'), language, 4),
+            _t(language, 'VPL Tradicional (sem flexibilidade)', 'Traditional NPV (without flexibility)'): _money(results.get('traditional_npv'), language),
+            _t(language, 'VPL Expandido (com valor da opção)', 'Expanded NPV (with option value)'): _money(results.get('expanded_npv'), language),
+            _t(language, 'Valor da Flexibilidade', 'Value of Flexibility'): _money(results.get('flexibility_value'), language),
+            _t(language, 'Razão Valor da Opção / Custo de Investimento', 'Option Value / Investment Cost Ratio'): _number(results.get('option_ratio'), language, 4),
+        },
+        'tables': [lattice],
+    }
+
+
+# --- Real options: cash-flow volatility (simulated in the browser) -----------
+
+def _volatility_or_not_available(value, language):
+    """Markowitz and VaR divide by the mean NPV; the screen saves None when it is ≤ 0."""
+    if value is None:
+        return _t(language, 'N/D (VPL médio ≤ 0)', 'N/A (mean NPV ≤ 0)')
+    return _return_percent(value, language)
+
+
+def _cash_flow_volatility_report(parameters, results, language, method_label, extra_results=None):
+    cash_flows = parameters.get('cash_flows') or []
+    std_devs = parameters.get('std_devs') or []
+    rows = [
+        [period, _money(cash_flow, language), _money(std_devs[period - 1] if period <= len(std_devs) else None, language)]
+        for period, cash_flow in enumerate(cash_flows, start=1)
+    ]
+    return {
+        'results': {
+            _t(language, f'Volatilidade estimada ({method_label})', f'Volatility estimate ({method_label})'): _return_percent(results.get('volatility'), language),
+            **(extra_results or {}),
+            _t(language, 'Média de z', 'Mean of z'): _number(results.get('mean_z'), language, 4),
+            _t(language, 'Desvio padrão de z', 'Standard deviation of z'): _number(results.get('std_z'), language, 4),
+            _t(language, 'Valor mínimo de z', 'Min value of z'): _number(results.get('min_z'), language, 4),
+            _t(language, 'Valor máximo de z', 'Max value of z'): _number(results.get('max_z'), language, 4),
+            _t(language, 'VPL médio', 'Average NPV'): _money(results.get('mean_npv'), language),
+            _t(language, 'Desvio-padrão do VPL', 'Standard deviation of NPV'): _money(results.get('std_npv'), language),
+            _t(language, 'Markowitz: coeficiente de variação do VPL (σ)', 'Markowitz: NPV coefficient of variation (σ)'): _volatility_or_not_available(results.get('markowitz_cv'), language),
+            _t(language, 'Abordagem pelo VaR(5%) (σ)', 'VaR(5%) approach (σ)'): _volatility_or_not_available(results.get('var_volatility'), language),
+            _t(language, 'Log-retorno do fluxo de caixa (σ)', 'Cash flow log-return (σ)'): _return_percent(results.get('log_cf_volatility'), language),
+        },
+        'tables': [{
+            'title': _t(language, 'Fluxos de caixa esperados', 'Expected cash flows'),
+            'headers': [
+                _t(language, 'Período', 'Period'),
+                _t(language, 'Fluxo de Caixa Esperado', 'Expected Cash Flow'),
+                _t(language, 'Desvio Padrão', 'Standard Deviation'),
+            ],
+            'rows': rows,
+        }],
+        'charts': _charts({_t(language, 'Histograma de z = ln(V₁/V₀)', 'Histogram of z = ln(V₁/V₀)'): results.get('chart')}),
+    }
+
+
+def build_copeland_antikarov_report(parameters, results, language):
+    return _cash_flow_volatility_report(parameters, results, language, 'Copeland & Antikarov', {
+        _t(language, 'V₀ (VP dos fluxos esperados)', 'V₀ (PV of the expected cash flows)'): _money(results.get('v0'), language),
+    })
+
+
+def build_herath_park_report(parameters, results, language):
+    return _cash_flow_volatility_report(parameters, results, language, 'Herath & Park', {
+        _t(language, 'Abordagem de Copeland & Antikarov (σ), para comparação', 'Copeland & Antikarov approach (σ), for comparison'): _return_percent(results.get('ca_volatility'), language),
+    })
+
+
+CASH_FLOW_VOLATILITY_DEFAULTS = {
+    'initialInvestment': 500000, 'discountRate': 10, 'numPeriods': 5, 'numSimulations': 1000,
+    'uncertaintyPercent': 10, 'seed': '',
+    'cash_flows': [125000, 150000, 175000, 200000, 225000],
+    'std_devs': [12500, 15000, 17500, 20000, 22500],
+}
+
+CASH_FLOW_VOLATILITY_PARAM_LABELS = {
+    'pt': {
+        'initialInvestment': 'Investimento Inicial (I₀)', 'discountRate': 'Taxa de Desconto (TMA, %)',
+        'numPeriods': 'Número de Períodos', 'numSimulations': 'Número de Simulações',
+        'uncertaintyPercent': 'Incerteza (Desvio Padrão %)', 'seed': 'Semente',
+        'cash_flows': 'Fluxos de Caixa Esperados', 'std_devs': 'Desvios Padrão',
+    },
+    'en': {
+        'initialInvestment': 'Initial Investment (I₀)', 'discountRate': 'Discount Rate (MARR, %)',
+        'numPeriods': 'Number of Periods', 'numSimulations': 'Number of Simulations',
+        'uncertaintyPercent': 'Uncertainty (Standard Deviation %)', 'seed': 'Seed',
+        'cash_flows': 'Expected Cash Flows', 'std_devs': 'Standard Deviations',
+    },
+}
+
+
+# --- Stochastic processes (simulated on the server) --------------------------
+# The statistics are saved by key (estocasticos/labels.py) and labelled here,
+# in the language the report is opened in.
+
+def _stats(stats, language, decimals=4):
+    return {stat_label(key, language): _number(value, language, decimals) for key, value in (stats or {}).items()}
+
+
+def _percent_of(fraction, language):
+    try:
+        return _percent(float(fraction) * 100, language)
+    except (TypeError, ValueError):
+        return '-'
+
+
+def build_markov_chain_report(parameters, results, language):
+    states = parameters.get('states') or []
+    matrix = parameters.get('transition_matrix') or []
+    initial = parameters.get('initial_percentages') or []
+    evolution = results.get('evolution') or []
+    return {
+        'tables': [
+            {
+                'title': _t(language, 'Matriz de transição (%)', 'Transition matrix (%)'),
+                'headers': [_t(language, 'De \\ Para', 'From \\ To'), *states],
+                'rows': [[state, *[_percent(value, language) for value in row]] for state, row in zip(states, matrix)],
+            },
+            {
+                'title': _t(language, 'Distribuição inicial', 'Initial distribution'),
+                'headers': [_t(language, 'Estado', 'State'), _t(language, 'Probabilidade', 'Probability')],
+                'rows': [[state, _percent(value, language)] for state, value in zip(states, initial)],
+            },
+            {
+                'title': _t(language, 'Evolução das probabilidades', 'Evolution of the probabilities'),
+                'headers': [_t(language, 'Iteração', 'Iteration'), *states],
+                'rows': [[step, *[_percent_of(value, language) for value in vector]] for step, vector in enumerate(evolution)],
+            },
+        ],
+        'charts': _charts({_t(language, 'Evolução das probabilidades dos estados', 'Evolution of state probabilities'): results.get('plot')}),
+    }
+
+
+RANDOM_WALK_DISTRIBUTIONS = {
+    'normal': ('Normal N(0, 1)', 'Normal N(0, 1)'),
+    'uniform': ('Uniforme U(−1, 1)', 'Uniform U(−1, 1)'),
+    'discrete': ('Discreta {−1, 1}', 'Discrete {−1, 1}'),
+}
+
+
+def build_random_walk_report(parameters, results, language):
+    statistics = results.get('statistics') or {}
+    keys = ('final', 'min', 'max', 'std_theoretical')
+    rows = [
+        [_t(language, *labels), *[_number(statistics[name].get(key), language, 4) for key in keys]]
+        for name, labels in RANDOM_WALK_DISTRIBUTIONS.items() if name in statistics
+    ]
+    return {
+        'tables': [{
+            'title': _t(language, 'Resultado por distribuição', 'Result by distribution'),
+            'headers': [_t(language, 'Distribuição', 'Distribution'), *[stat_label(key, language) for key in keys]],
+            'rows': rows,
+        }],
+        'charts': _charts({_t(language, 'Random walk com diferentes distribuições', 'Random walk with different distributions'): results.get('plot')}),
+    }
+
+
+def build_random_walk_normal_report(parameters, results, language):
+    keys = ('min', 'max', 'mean', 'median', 'variance', 'std')
+    rows = [
+        [_t(language, f'0% – {item.get("share")}% dos passos', f'0% – {item.get("share")}% of the steps'),
+         *[_number((item.get('stats') or {}).get(key), language, 4) for key in keys]]
+        for item in results.get('statistics') or []
+    ]
+    return {
+        'tables': [{
+            'title': _t(language, 'Estatísticas descritivas das posições', 'Descriptive statistics of the positions'),
+            'headers': [_t(language, 'Passos considerados', 'Steps considered'), *[stat_label(key, language) for key in keys]],
+            'rows': rows,
+        }],
+        'charts': _charts({
+            _t(language, 'Trajetórias', 'Paths'): results.get('walk_plot'),
+            _t(language, 'Distribuição das posições', 'Distribution of the positions'): results.get('histograms_plot'),
+        }),
+    }
+
+
+def _diffusion_report(results, language, paths_title, distribution_title):
+    return {
+        'results': _stats(results.get('statistics'), language),
+        'charts': _charts({
+            _t(language, *paths_title): results.get('paths_plot'),
+            _t(language, *distribution_title): results.get('distribution_plot'),
+        }),
+    }
+
+
+def build_abm_report(parameters, results, language):
+    return _diffusion_report(results, language, ('Trajetórias simuladas', 'Simulated paths'),
+                             ('Distribuição dos valores finais X_T', 'Distribution of the final values X_T'))
+
+
+def build_gbm_ito_report(parameters, results, language):
+    return _diffusion_report(results, language, ('Trajetórias simuladas', 'Simulated paths'),
+                             ('Distribuição dos preços finais S_T', 'Distribution of the final prices S_T'))
+
+
+def build_mean_reversion_report(parameters, results, language):
+    return _diffusion_report(results, language, ('Trajetórias simuladas', 'Simulated paths'),
+                             ('Distribuição dos valores finais X_T', 'Distribution of the final values X_T'))
+
+
+def build_gbm_monte_carlo_report(parameters, results, language):
+    return {
+        'results': _stats(results.get('stats_descriptive'), language),
+        'nested_results': {
+            _t(language, 'Estatística inferencial (média e IC 95%)', 'Inferential statistics (mean and 95% CI)'):
+                _stats(results.get('stats_inferential'), language),
+        },
+        'charts': _charts({
+            _t(language, 'Evolução dos preços', 'Price paths'): results.get('price_plot'),
+            _t(language, 'Distribuição dos preços finais', 'Distribution of the final prices'): results.get('distribution_plot'),
+            _t(language, 'Convergência da média dos preços finais', 'Convergence of the mean final price'): results.get('convergence_plot'),
+        }),
+    }
+
+
+def build_models_comparison_report(parameters, results, language):
+    final = results.get('final_values') or {}
+    return {
+        'results': {
+            _t(language, 'Valor final — Random Walk', 'Final value — Random Walk'): _number(final.get('random_walk'), language, 4),
+            _t(language, 'Valor final — Movimento Browniano Geométrico', 'Final value — Geometric Brownian Motion'): _number(final.get('gbm'), language, 4),
+            _t(language, 'Valor final — Reversão à Média', 'Final value — Mean Reversion'): _number(final.get('mean_reversion'), language, 4),
+        },
+        'charts': _charts({_t(language, 'Comparação de modelos estocásticos', 'Stochastic models comparison'): results.get('plot_image')}),
+    }
+
+
+SEED_LABELS = {'pt': {'seed': 'Semente'}, 'en': {'seed': 'Seed'}}
+
+
+def _with_seed(labels):
+    return {language: {**names, **SEED_LABELS[language]} for language, names in labels.items()}
+
+
+DIFFUSION_GRID_LABELS = {
+    'pt': {'T': 'Horizonte de tempo (T, anos)', 'dt': 'Passo de tempo (dt)', 'n_simulations': 'Número de simulações'},
+    'en': {'T': 'Time horizon (T, years)', 'dt': 'Time step (dt)', 'n_simulations': 'Number of simulations'},
+}
+
+
+def _diffusion_labels(pt, en):
+    return _with_seed({'pt': {**pt, **DIFFUSION_GRID_LABELS['pt']}, 'en': {**en, **DIFFUSION_GRID_LABELS['en']}})
+
+
 # --- Registry ----------------------------------------------------------------
 
 REGISTRY: dict[str, ModelSpec] = {
@@ -518,5 +808,142 @@ REGISTRY: dict[str, ModelSpec] = {
             'en': {'periods': 'Number of Periods', 'prices': 'Asset Values'},
         },
         table_params=('prices',),
+    ),
+    FinantialModelsChoices.BINOMIAL_REAL_OPTION: ModelSpec(
+        template='site/teoria/binomial_model.html',
+        build_report=build_binomial_real_option_report,
+        defaults={
+            'initialValue': 1000000, 'strikePrice': 900000, 'timeToMaturity': 5,
+            'riskFreeRate': 5, 'volatility': 20, 'steps': 5,
+            'optionType': 'call', 'exerciseStyle': 'european',
+        },
+        param_labels={
+            'pt': {
+                'initialValue': 'Valor Inicial do Projeto (V₀)', 'strikePrice': 'Preço de Exercício (Custo do Investimento)',
+                'timeToMaturity': 'Tempo até o Vencimento (anos)', 'riskFreeRate': 'Taxa Livre de Risco (%)',
+                'volatility': 'Volatilidade Anual (σ, %)', 'steps': 'Número de Passos de Tempo',
+                'optionType': 'Tipo de Opção', 'exerciseStyle': 'Estilo de Exercício',
+            },
+            'en': {
+                'initialValue': 'Initial Project Value (V₀)', 'strikePrice': 'Strike Price (Investment Cost)',
+                'timeToMaturity': 'Time to Maturity (years)', 'riskFreeRate': 'Risk-Free Rate (%)',
+                'volatility': 'Annual Volatility (σ, %)', 'steps': 'Number of Time Steps',
+                'optionType': 'Option Type', 'exerciseStyle': 'Exercise Style',
+            },
+        },
+        value_labels={
+            'pt': {
+                'optionType': {'call': 'Opção de Compra (Opção de Investir)', 'put': 'Opção de Venda (Opção de Abandonar)'},
+                'exerciseStyle': {'european': 'Europeia', 'american': 'Americana'},
+            },
+            'en': {
+                'optionType': {'call': 'Call Option (Option to Invest)', 'put': 'Put Option (Option to Abandon)'},
+                'exerciseStyle': {'european': 'European', 'american': 'American'},
+            },
+        },
+    ),
+    FinantialModelsChoices.COPELAND_ANTIKAROV: ModelSpec(
+        template='site/teoria/copeland-antikarov-template.html',
+        build_report=build_copeland_antikarov_report,
+        defaults=CASH_FLOW_VOLATILITY_DEFAULTS,
+        param_labels=CASH_FLOW_VOLATILITY_PARAM_LABELS,
+        table_params=('cash_flows', 'std_devs'),
+    ),
+    FinantialModelsChoices.HERATH_PARK: ModelSpec(
+        template='site/teoria/herath_park.html',
+        build_report=build_herath_park_report,
+        defaults=CASH_FLOW_VOLATILITY_DEFAULTS,
+        param_labels=CASH_FLOW_VOLATILITY_PARAM_LABELS,
+        table_params=('cash_flows', 'std_devs'),
+    ),
+    FinantialModelsChoices.MARKOV_CHAIN: ModelSpec(
+        template='site/processos-estocasticos/cadeia_markov.html',
+        build_report=build_markov_chain_report,
+        defaults={
+            'num_states': 3, 'states': ['A', 'B', 'C'],
+            'transition_matrix': [[70, 20, 10], [10, 80, 10], [20, 30, 50]],
+            'initial_percentages': [100, 0, 0], 'iterations': 10,
+        },
+        param_labels={
+            'pt': {'num_states': 'Número de estados', 'iterations': 'Número de iterações', 'states': 'Estados',
+                   'transition_matrix': 'Matriz de transição (%)', 'initial_percentages': 'Porcentagens iniciais'},
+            'en': {'num_states': 'Number of states', 'iterations': 'Number of iterations', 'states': 'States',
+                   'transition_matrix': 'Transition matrix (%)', 'initial_percentages': 'Initial percentages'},
+        },
+        table_params=('states', 'transition_matrix', 'initial_percentages'),
+    ),
+    FinantialModelsChoices.RANDOM_WALK: ModelSpec(
+        template='site/processos-estocasticos/random_walk.html',
+        build_report=build_random_walk_report,
+        defaults={'steps': 1000, 'seed': ''},
+        param_labels=_with_seed({'pt': {'steps': 'Número de passos'}, 'en': {'steps': 'Number of steps'}}),
+    ),
+    FinantialModelsChoices.RANDOM_WALK_NORMAL: ModelSpec(
+        template='site/processos-estocasticos/random_walk_normal.html',
+        build_report=build_random_walk_normal_report,
+        defaults={'paths': 5, 'steps': 100, 'seed': ''},
+        param_labels=_with_seed({
+            'pt': {'paths': 'Número de caminhos', 'steps': 'Número de passos'},
+            'en': {'paths': 'Number of paths', 'steps': 'Number of steps'},
+        }),
+    ),
+    FinantialModelsChoices.ARITHMETIC_BROWNIAN_MOTION: ModelSpec(
+        template='site/processos-estocasticos/abm.html',
+        build_report=build_abm_report,
+        defaults={'X0': 100, 'mu': 2.0, 'sigma': 10.0, 'T': 1, 'dt': 0.01, 'n_simulations': 10, 'seed': ''},
+        param_labels=_diffusion_labels(
+            {'X0': 'Valor inicial (X₀)', 'mu': 'Drift (μ)', 'sigma': 'Volatilidade (σ)'},
+            {'X0': 'Initial value (X₀)', 'mu': 'Drift (μ)', 'sigma': 'Volatility (σ)'},
+        ),
+    ),
+    FinantialModelsChoices.GBM_MONTE_CARLO: ModelSpec(
+        template='site/processos-estocasticos/monte_carlos.html',
+        build_report=build_gbm_monte_carlo_report,
+        defaults={'S0': 100, 'mu': 0.15, 'sigma': 0.3, 'time_unit': 'Ano', 'num_periods': 10,
+                  'num_simulations': 100, 'seed': ''},
+        param_labels=_with_seed({
+            'pt': {'S0': 'Preço inicial (S0)', 'mu': 'Retorno anual (μ)', 'sigma': 'Volatilidade anual (σ)',
+                   'time_unit': 'Unidade de tempo', 'num_periods': 'Número de períodos', 'num_simulations': 'Número de simulações'},
+            'en': {'S0': 'Initial price (S0)', 'mu': 'Annual return (μ)', 'sigma': 'Annual volatility (σ)',
+                   'time_unit': 'Time unit', 'num_periods': 'Number of periods', 'num_simulations': 'Number of simulations'},
+        }),
+        value_labels={
+            'pt': {'time_unit': {'Dia': 'Dia', 'Semana': 'Semana', 'Mês': 'Mês', 'Ano': 'Ano'}},
+            'en': {'time_unit': {'Dia': 'Day', 'Semana': 'Week', 'Mês': 'Month', 'Ano': 'Year'}},
+        },
+    ),
+    FinantialModelsChoices.GBM_ITO: ModelSpec(
+        template='site/processos-estocasticos/mbg_ito.html',
+        build_report=build_gbm_ito_report,
+        defaults={'S0': 100, 'mu': 0.1, 'sigma': 0.2, 'T': 1, 'dt': 0.01, 'n_simulations': 10, 'seed': ''},
+        param_labels=_diffusion_labels(
+            {'S0': 'Preço inicial (S₀)', 'mu': 'Taxa de retorno / drift (μ)', 'sigma': 'Volatilidade (σ)'},
+            {'S0': 'Initial price (S₀)', 'mu': 'Return rate / drift (μ)', 'sigma': 'Volatility (σ)'},
+        ),
+    ),
+    FinantialModelsChoices.MEAN_REVERSION: ModelSpec(
+        template='site/processos-estocasticos/modelo_media.html',
+        build_report=build_mean_reversion_report,
+        defaults={'S0': 80, 'mu': 100, 'kappa': 1, 'sigma': 5, 'T': 2, 'dt': 0.01, 'n_simulations': 10, 'seed': ''},
+        param_labels=_diffusion_labels(
+            {'S0': 'Valor inicial (X₀)', 'mu': 'Nível médio (μ)', 'kappa': 'Velocidade de reversão (κ)', 'sigma': 'Volatilidade (σ)'},
+            {'S0': 'Initial value (X₀)', 'mu': 'Long-term level (μ)', 'kappa': 'Reversion speed (κ)', 'sigma': 'Volatility (σ)'},
+        ),
+    ),
+    FinantialModelsChoices.MODELS_COMPARISON: ModelSpec(
+        template='site/processos-estocasticos/vizualizacao_modelos.html',
+        build_report=build_models_comparison_report,
+        defaults={'s0': 100, 't': 1, 'dt': 0.01, 'mu_gbm': 0.1, 'sigma_gbm': 0.2,
+                  'kappa_mr': 0.5, 'mu_mr': 100, 'sigma_mr': 10, 'seed': ''},
+        param_labels=_with_seed({
+            'pt': {'s0': 'Valor inicial (S0)', 't': 'Tempo total (T)', 'dt': 'Passo de tempo (dt)',
+                   'mu_gbm': 'MBG: taxa de drift (μ)', 'sigma_gbm': 'MBG: volatilidade (σ)',
+                   'kappa_mr': 'Reversão: velocidade (κ)', 'mu_mr': 'Reversão: nível de longo prazo (μ)',
+                   'sigma_mr': 'Reversão: volatilidade (σ)'},
+            'en': {'s0': 'Initial value (S0)', 't': 'Total time (T)', 'dt': 'Time step (dt)',
+                   'mu_gbm': 'GBM: drift rate (μ)', 'sigma_gbm': 'GBM: volatility (σ)',
+                   'kappa_mr': 'Reversion: speed (κ)', 'mu_mr': 'Reversion: long-term level (μ)',
+                   'sigma_mr': 'Reversion: volatility (σ)'},
+        }),
     ),
 }

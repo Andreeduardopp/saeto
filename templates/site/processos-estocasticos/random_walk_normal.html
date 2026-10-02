@@ -1,110 +1,87 @@
 <div class="container mt-5">
     <h1>Random Walk</h1>
+    <p>
+        {% if request.session.language == 'en' %}Simulates several paths Xₜ = Xₜ₋₁ + εₜ, ε ~ N(0, 1), from X₀ = 0, and the distribution of the positions up to 25%, 50%, 75% and 100% of the steps.{% else %}Simula vários caminhos Xₜ = Xₜ₋₁ + εₜ, ε ~ N(0, 1), a partir de X₀ = 0, e a distribuição das posições até 25%, 50%, 75% e 100% dos passos.{% endif %}
+    </p>
 
-    <form id="randomWalkForm" method="post" action="{% url 'simulate_random_walk_normal' %}">
+    <form id="randomWalkNormalForm" novalidate>
         {% csrf_token %}
-
-        <div class="form-group">
-            <label for="paths">{% if request.session.language == 'en' %}Number of paths{% else %}Número de Caminhos:{% endif %}</label>
-
-            <input type="number" class="form-control" id="paths" name="paths" required min="1" placeholder="Exemplo: 5">
+        <div class="form-group mb-3">
+            <label for="paths">{% if request.session.language == 'en' %}Number of Paths (1 to 20):{% else %}Número de Caminhos (1 a 20):{% endif %}</label>
+            <input type="number" class="form-control" id="paths" name="paths" min="1" max="20" step="1" value="{{ initial_data.paths }}" required>
         </div>
-
-        <div class="form-group">
-            <label for="steps">{% if request.session.language == 'en' %}Number of steps{% else %}Número de Passos:{% endif %}</label>
-            <input type="number" class="form-control" id="steps" name="steps" required min="4" placeholder="Exemplo: 100">
+        <div class="form-group mb-3">
+            <label for="steps">{% if request.session.language == 'en' %}Number of Steps (4 to 100):{% else %}Número de Passos (4 a 100):{% endif %}</label>
+            <input type="number" class="form-control" id="steps" name="steps" min="4" max="100" step="1" value="{{ initial_data.steps }}" required>
         </div>
-
-        <button type="button" class="btn btn-primary mt-3" onclick="submitRandomWalkForm()">
-            {% if request.session.language == 'en' %}Run{% else %}Gerar{% endif %}
-        </button>
+        {% include "site/processos-estocasticos/_seed_input.html" %}
+        {% include "site/processos-estocasticos/_run_controls.html" %}
     </form>
-    <div id="randomWalkResults" class="mt-4">
+
+    <div id="resultsContainer" style="display: none;">
+        <h3>{% if request.session.language == 'en' %}Simulation Result{% else %}Resultado da Simulação{% endif %}</h3>
+        {% include "site/processos-estocasticos/_seed_used.html" %}
+        <img id="walkPlot" class="img-fluid" alt="Random Walk">
+        <h3 class="mt-4">{% if request.session.language == 'en' %}Distribution and Statistics{% else %}Distribuição e Estatísticas{% endif %}</h3>
+        <img id="histogramsPlot" class="img-fluid" alt="{% if request.session.language == 'en' %}Distribution of the positions{% else %}Distribuição das posições{% endif %}">
+        <h4 class="mt-4">{% if request.session.language == 'en' %}Descriptive Statistics{% else %}Estatísticas Descritivas{% endif %}</h4>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th>{% if request.session.language == 'en' %}Steps considered{% else %}Passos considerados{% endif %}</th>
+                        <th>{{ stat_labels.min }}</th>
+                        <th>{{ stat_labels.max }}</th>
+                        <th>{{ stat_labels.mean }}</th>
+                        <th>{{ stat_labels.median }}</th>
+                        <th>{{ stat_labels.variance }}</th>
+                        <th>{{ stat_labels.std }}</th>
+                    </tr>
+                </thead>
+                <tbody id="randomWalkNormalStats"></tbody>
+            </table>
+        </div>
     </div>
-
-
 </div>
 
 <script>
-    function submitRandomWalkForm() {
-        const form = document.getElementById('randomWalkForm');
-        const formData = new FormData(form);
-        const resultsDiv = document.getElementById('randomWalkResults'); 
-        fetch(form.action, {
-            method: 'POST',
-            body: formData,
-        })
-        .then(response => {
-            console.log("Fetch response received. Status:", response.status, "OK:", response.ok);
-            console.log(response)
-            if (!response.ok) {
-                return response.json()
-                    .catch(() => response.text().then(text => ({ error: `Erro do servidor (${response.status}): ${text}` })))
-                    .then(errorData => {
-                        throw new Error(errorData.error || `Erro desconhecido do servidor (${response.status})`);
-                    });
-            }
-            return response.json(); 
-        })
-        .then(data => {
-            console.log(data)
-            if (data.error) {
-                resultsDiv.innerHTML = `<p style="color: red;">${data.error}</p>`;
-                return;
-            }
+(function () {
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const screen = window.saetoServerScreen;
+    const form = document.getElementById('randomWalkNormalForm');
+    const KEYS = ['min', 'max', 'mean', 'median', 'variance', 'std'];
+    const shareLabel = (share) => lang === 'en' ? `0% – ${share}% of the steps` : `0% – ${share}% dos passos`;
 
-            let htmlContent = data.language == 'pt' ?
-                '<h3>Resultado da Simulação</h3>' :
-                '<h3>Simulation Result</h3>';
-
-            htmlContent += `<img src="data:image/png;base64,${data.walk_plot}" alt="${data.language == 'pt' ? 'Evolução do Caminho Aleatório' : 'Random Walk Evolution'}" style="max-width: 100%; height: auto;">`;
-
-            htmlContent += data.language == 'pt' ?
-                '<h3>Distribuição e Estatísticas</h3>' :
-                '<h3>Distribution and Statistics</h3>';
-
-            htmlContent += `<img src="data:image/png;base64,${data.histograms_plot}" alt="${data.language == 'pt' ? 'Distribuição dos Caminhos' : 'Distribution of Paths'}" style="max-width: 100%; height: auto;">`;
-
-            htmlContent += data.language == 'pt' ?
-                '<h4>Estatísticas Descritivas</h4>' :
-                '<h4>Descriptive Statistics</h4>';
-
-            data.statistics.forEach(statSet => {
-                const [label, stats] = statSet;
-                let translatedLabel = label;
-                if (data.language == 'pt') {
-                    if (label === 'End Positions') translatedLabel = 'Posições Finais';
-                    else if (label === 'Maximum Positions') translatedLabel = 'Posições Máximas';
-                    else if (label === 'Minimum Positions') translatedLabel = 'Posições Mínimas';
-                }
-                htmlContent += `<h5>${translatedLabel}</h5><ul>`;
-
-                for (const [key, value] of Object.entries(stats)) {
-                    let translatedKey = key;
-                    if (data.language == 'pt') {
-                        if (key === 'Mean') translatedKey = 'Média';
-                        else if (key === 'Median') translatedKey = 'Mediana';
-                        else if (key === 'Standard Deviation') translatedKey = 'Desvio Padrão';
-                        else if (key === 'Variance') translatedKey = 'Variância';
-                        else if (key === 'Min') translatedKey = 'Mínimo';
-                        else if (key === 'Max') translatedKey = 'Máximo';
-                        else if (key === 'Range') translatedKey = 'Amplitude';
-                    }
-
-                    const formattedValue = typeof value === 'number' && !isNaN(value) ? value.toFixed(2) : String(value);
-                    htmlContent += `<li><strong>${translatedKey}:</strong> ${formattedValue}</li>`;
-                }
-                htmlContent += '</ul>';
+    screen({
+        form,
+        url: '{% url "simulate_random_walk_normal" %}',
+        saveUrl: '{% url "save_financial_model" %}',
+        modelType: 'RANDOM_WALK_NORMAL',
+        lang,
+        resultsContainer: document.getElementById('resultsContainer'),
+        errorBox: document.getElementById('screenError'),
+        submitButton: document.getElementById('runButton'),
+        resetButton: document.getElementById('resetButton'),
+        saveButton: document.getElementById('saveProjectButton'),
+        readParameters: () => screen.readForm(form, { paths: 'number', steps: 'number' }),
+        render(data) {
+            const walkPlot = screen.dataUri(data.walk_plot);
+            const histogramsPlot = screen.dataUri(data.histograms_plot);
+            document.getElementById('walkPlot').src = walkPlot;
+            document.getElementById('histogramsPlot').src = histogramsPlot;
+            const tbody = document.getElementById('randomWalkNormalStats');
+            tbody.innerHTML = '';
+            data.statistics.forEach(({ share, stats }) => {
+                const row = document.createElement('tr');
+                [shareLabel(share), ...KEYS.map(key => screen.formatNumber(stats[key], lang))].forEach(text => {
+                    const cell = document.createElement('td');
+                    cell.textContent = text;
+                    row.appendChild(cell);
+                });
+                tbody.appendChild(row);
             });
-
-            resultsDiv.innerHTML = htmlContent;
-        })
-        .catch(error => {
-            console.error("Ocorreu um erro na requisição Fetch:", error);
-            resultsDiv.innerHTML = `<p style="color: red;">${data.language == 'pt' ?
-                'Ocorreu um erro' : 'An error occurred'}: ${error.message || (data.language == 'pt' ?
-                'Erro desconhecido. Por favor, tente novamente.' :
-                'Unknown error. Please try again.')}</p>`;
-        });
-    }
+            return { statistics: data.statistics, walk_plot: walkPlot, histograms_plot: histogramsPlot };
+        },
+    });
+})();
 </script>

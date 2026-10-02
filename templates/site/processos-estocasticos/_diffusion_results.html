@@ -1,0 +1,23 @@
+<div id="resultsContainer" style="display: none;">
+    <h3 class="mt-4">{% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}</h3>
+    {% include "site/processos-estocasticos/_seed_used.html" %}
+    <div class="row mb-4">
+        <div class="col-md-6"><img id="pathsPlot" class="img-fluid border rounded" alt="{% if request.session.language == 'en' %}Simulated paths{% else %}Trajetórias simuladas{% endif %}"></div>
+        <div class="col-md-6"><img id="distributionPlot" class="img-fluid border rounded" alt="{% if request.session.language == 'en' %}Distribution of the final values{% else %}Distribuição dos valores finais{% endif %}"></div>
+    </div>
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h4>{% if request.session.language == 'en' %}Statistics of the final value{% else %}Estatísticas do valor final{% endif %}</h4>
+            <table class="table table-bordered table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>{% if request.session.language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
+                        <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody id="statisticsTable"></tbody>
+            </table>
+            <small class="text-muted">{% if request.session.language == 'en' %}{{ note_en }}{% else %}{{ note_pt }}{% endif %}</small>
+        </div>
+    </div>
+</div>

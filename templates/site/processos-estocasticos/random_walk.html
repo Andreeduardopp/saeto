@@ -1,55 +1,81 @@
 <div class="container mt-5">
     {% if request.session.language == 'en' %}
     <h1>Random Walk visualization</h1>
-    <p>
-        Enter the number of steps to generate a Random Walk with three different distributions.
-    </p>
+    <p>Enter the number of steps to generate a random walk Xₜ = Xₜ₋₁ + εₜ, from X₀ = 0, with three different distributions of ε.</p>
     {% else %}
     <h1>Visualização de Random Walk</h1>
-    <p>
-        Insira o número de passos para gerar um Random Walk com três distribuições diferentes.
-    </p>
+    <p>Insira o número de passos para gerar um random walk Xₜ = Xₜ₋₁ + εₜ, a partir de X₀ = 0, com três distribuições diferentes de ε.</p>
     {% endif %}
-    <form id="randomWalkVisualizationForm" method="post" action="{% url 'simulate_random_walk' %}">
-        {% csrf_token %}
-        <div class="form-group">
-            <label for="steps">
-                {% if request.session.language == 'en' %}Number of Steps:{% else %}Número de Passos:{% endif %}
-                
-            </label>
-            <input type="number" class="form-control" id="steps" name="steps" required min="1"
-            placeholder="{% if request.session.language == 'en' %}Example: 1000{% else %}Exemplo: 1000{% endif %}">
-        </div>
 
-        <button type="submit" class="btn btn-primary mt-3" onclick="submitRandomWalkVisualizationForm(event)">
-            
-            {% if request.session.language == 'en' %}Generate{% else %}Gerar{% endif %}
-        </button>
+    <form id="randomWalkForm" novalidate>
+        {% csrf_token %}
+        <div class="form-group mb-3">
+            <label for="steps">{% if request.session.language == 'en' %}Number of Steps (1 to 10,000):{% else %}Número de Passos (1 a 10.000):{% endif %}</label>
+            <input type="number" class="form-control" id="steps" name="steps" min="1" max="10000" step="1" value="{{ initial_data.steps }}" required>
+        </div>
+        {% include "site/processos-estocasticos/_seed_input.html" %}
+        {% include "site/processos-estocasticos/_run_controls.html" %}
     </form>
 
-    <!-- Container para exibir o gráfico -->
-    <div id="plotContainer" class="mt-4"></div>
+    <div id="resultsContainer" style="display: none;">
+        {% include "site/processos-estocasticos/_seed_used.html" %}
+        <img id="randomWalkPlot" class="img-fluid" alt="Random Walk">
+        <table class="table table-bordered table-sm mt-3">
+            <thead class="table-light">
+                <tr>
+                    <th>{% if request.session.language == 'en' %}Distribution{% else %}Distribuição{% endif %}</th>
+                    <th>{{ stat_labels.final }}</th>
+                    <th>{{ stat_labels.min }}</th>
+                    <th>{{ stat_labels.max }}</th>
+                    <th>{{ stat_labels.std_theoretical }}</th>
+                </tr>
+            </thead>
+            <tbody id="randomWalkStats"></tbody>
+        </table>
+        <small class="text-muted">
+            {% if request.session.language == 'en' %}Theoretical standard deviation of the final value: σ√n, with σ = 1 (normal and discrete) or 1/√3 (uniform).{% else %}Desvio padrão teórico do valor final: σ√n, com σ = 1 (normal e discreta) ou 1/√3 (uniforme).{% endif %}
+        </small>
+    </div>
 </div>
 
 <script>
-    function submitRandomWalkVisualizationForm(event) {
-        event.preventDefault();
-        const form = document.getElementById('randomWalkVisualizationForm');
-        const formData = new FormData(form);
+(function () {
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const screen = window.saetoServerScreen;
+    const form = document.getElementById('randomWalkForm');
+    const DISTRIBUTIONS = lang === 'en'
+        ? { normal: 'Normal N(0, 1)', uniform: 'Uniform U(−1, 1)', discrete: 'Discrete {−1, 1}' }
+        : { normal: 'Normal N(0, 1)', uniform: 'Uniforme U(−1, 1)', discrete: 'Discreta {−1, 1}' };
+    const KEYS = ['final', 'min', 'max', 'std_theoretical'];
 
-        fetch(form.action, {
-            method: 'POST',
-            body: formData,
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.plot_image) {
-                const plotContainer = document.getElementById('plotContainer');
-                plotContainer.innerHTML = `<img src="data:image/png;base64,${data.plot_image}" alt="Random Walk Visualization" class="img-fluid">`;
-            } else {
-                alert("Erro ao gerar o gráfico.");
+    screen({
+        form,
+        url: '{% url "simulate_random_walk" %}',
+        saveUrl: '{% url "save_financial_model" %}',
+        modelType: 'RANDOM_WALK',
+        lang,
+        resultsContainer: document.getElementById('resultsContainer'),
+        errorBox: document.getElementById('screenError'),
+        submitButton: document.getElementById('runButton'),
+        resetButton: document.getElementById('resetButton'),
+        saveButton: document.getElementById('saveProjectButton'),
+        readParameters: () => screen.readForm(form, { steps: 'number' }),
+        render(data) {
+            const plot = screen.dataUri(data.plot_image);
+            document.getElementById('randomWalkPlot').src = plot;
+            const tbody = document.getElementById('randomWalkStats');
+            tbody.innerHTML = '';
+            for (const [name, label] of Object.entries(DISTRIBUTIONS)) {
+                const row = document.createElement('tr');
+                [label, ...KEYS.map(key => screen.formatNumber(data.statistics[name][key], lang))].forEach(text => {
+                    const cell = document.createElement('td');
+                    cell.textContent = text;
+                    row.appendChild(cell);
+                });
+                tbody.appendChild(row);
             }
-        })
-        .catch(error => alert("Ocorreu um erro: " + error));
-    }
+            return { statistics: data.statistics, plot };
+        },
+    });
+})();
 </script>

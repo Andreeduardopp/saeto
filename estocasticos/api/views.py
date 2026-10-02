@@ -1,349 +1,286 @@
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from functools import wraps
+
 from django.contrib.auth.decorators import login_required
-from estocasticos.use_cases.comparacao_modelos_use_case import ComparacaoModelosUseCase
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.views.decorators.http import require_POST
+
+from estocasticos.api.inputs import InvalidInput, check_grid, read_choice, read_number, read_seed
 from estocasticos.use_cases.abm_use_case import ArithmeticBrownianMotionUseCase
+from estocasticos.use_cases.cadeia_markov_use_case import CadeiaMarkovUseCase
+from estocasticos.use_cases.comparacao_modelos_use_case import ComparacaoModelosUseCase
 from estocasticos.use_cases.mbg_ito_use_case import GeometricBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
-from estocasticos.use_cases.monte_carlos_use_case import MonteCarloUseCase
+from estocasticos.use_cases.monte_carlos_use_case import PERIOD_IN_YEARS, MonteCarloUseCase
 from estocasticos.use_cases.random_walk_normal_use_case import RandomWalkNormalUseCase
-from estocasticos.use_cases.cadeia_markov_use_case import CadeiaMarkovUseCase
 from estocasticos.use_cases.random_walk_use_case import RandomWalkUseCase
+from estocasticos.use_cases.simulation_support import number_of_steps
+from financial_options.api.views import _render_screen
+from financial_options.models import FinantialModelsChoices as Choices
+
+LOGIN_URL = '/admin/login/'
 
 
-@login_required(login_url='/admin/login/')
+def _language(request):
+    return request.session.get('language', 'pt')
+
+
+# --------------------------- pages -------------------------------------------
+
+@login_required(login_url=LOGIN_URL)
 def processos_home(request):
     return render(request, "site/processos-estocasticos/processos_home.html")
 
 
+@login_required(login_url=LOGIN_URL)
 def cadeia_markov(request):
-    return render(request, "site/processos-estocasticos/cadeia_markov.html")
+    return _render_screen(request, Choices.MARKOV_CHAIN)
 
+
+@login_required(login_url=LOGIN_URL)
 def random_walk_overview(request):
     return render(request, "site/processos-estocasticos/random_walk_overview.html")
 
+
+@login_required(login_url=LOGIN_URL)
 def random_walk_normal(request):
-    return render(request, "site/processos-estocasticos/random_walk_normal.html")
+    return _render_screen(request, Choices.RANDOM_WALK_NORMAL)
 
 
+@login_required(login_url=LOGIN_URL)
 def random_walk_template(request):
-    try:
-        context = {}
-        return render(request, "site/processos-estocasticos/random_walk.html", context)
-    except Exception as e:
-        import logging
-
-        logging.error(f"Error rendering random_walk_template: {e}")
-        return render(request, "error_page.html", {"error": str(e)})
+    return _render_screen(request, Choices.RANDOM_WALK)
 
 
+@login_required(login_url=LOGIN_URL)
 def monte_carlos(request):
-    return render(request, "site/processos-estocasticos/monte_carlos.html")
+    return _render_screen(request, Choices.GBM_MONTE_CARLO)
 
 
+@login_required(login_url=LOGIN_URL)
 def mbg_overview(request):
     return render(request, "site/processos-estocasticos/mbg_overview.html")
 
+
+@login_required(login_url=LOGIN_URL)
 def mbg_ito(request):
-    return render(request, "site/processos-estocasticos/mbg_ito.html")
+    return _render_screen(request, Choices.GBM_ITO)
 
 
+@login_required(login_url=LOGIN_URL)
 def abm(request):
-    return render(request, "site/processos-estocasticos/abm.html")
+    return _render_screen(request, Choices.ARITHMETIC_BROWNIAN_MOTION)
 
 
-@login_required(login_url='/admin/login/')
+@login_required(login_url=LOGIN_URL)
 def mbg_teoria(request):
     return render(request, "site/teoria/mbg.html")
 
 
+@login_required(login_url=LOGIN_URL)
 def modelo_reversao_media(request):
-    return render(request, "site/processos-estocasticos/modelo_media.html")
+    return _render_screen(request, Choices.MEAN_REVERSION)
 
+
+@login_required(login_url=LOGIN_URL)
 def vizualizacao_modelos(request):
-    return render(request, "site/processos-estocasticos/vizualizacao_modelos.html")
+    return _render_screen(request, Choices.MODELS_COMPARISON)
 
-@login_required(login_url='/admin/login/')
+
+comparacao_modelos_template = vizualizacao_modelos
+
+
+@login_required(login_url=LOGIN_URL)
 def teoria_opcoes_financeiras(request):
     return render(request, "partials/teoria_opcoes_financeiras.html")
 
 
-@login_required(login_url='/admin/login/')
+@login_required(login_url=LOGIN_URL)
 def teoria_opcoes_reais(request):
     return render(request, "partials/teoria_opcoes_reais.html")
 
 
-# --------------------------- calculos-----------------------------
+# --------------------------- calculations ------------------------------------
 
-
-@csrf_exempt
-def markov_simulator(request):
-    """
-    View function to handle the Markov chain simulation.
-    Accepts POST requests with form data containing Markov chain parameters.
-    Returns JSON with plot image and evolution matrix.
-    """
-    if request.method == "POST":
+def calculation(handler):
+    """Logged-in POST only; an InvalidInput becomes a 400 with the message in the session language."""
+    @login_required(login_url=LOGIN_URL)
+    @require_POST
+    @wraps(handler)
+    def view(request):
+        language = _language(request)
         try:
-            # Parse input parameters from the form
-            num_states = int(request.POST["num_states"])
-            states = [s.strip() for s in request.POST["states"].split(",")]
-            
-            # Parse transition matrix
-            transition_matrix = []
-            try:
-                for i in range(num_states):
-                    row = []
-                    for j in range(num_states):
-                        prob = float(request.POST[f"transition_matrix[{i}][{j}]"])
-                        prob=prob/100
-                        row.append(prob)
-                    transition_matrix.append(row)
-            except ValueError:
-                return JsonResponse({"error": "Invalid transition matrix values."}, status=400)
-            
-            # Parse initial percentages
-            initial_percentages = []
-            for i in range(num_states):
-                percentage = float(request.POST[f"initial_percentages[{i}]"])
-                percentage = percentage / 100  # Convert to decimal
-                initial_percentages.append(percentage)
-            
-            # Get number of iterations
-            steps = int(request.POST["iterations"])
-            
-            # Create and run the simulation
-            simulator = CadeiaMarkovUseCase(
-                num_states, states, transition_matrix, initial_percentages, steps
-            )
-            
-            # Get evolution matrix and generate plot
-            evolution = simulator.simulate()
-            plot = simulator.generate_plot(evolution)
-            
-            # Return JSON response with both the plot and evolution matrix
-            return JsonResponse({
-                "plot": plot, 
-                "evolution": evolution,
-                "states": states,
-                "iterations": steps
-            })
-
-        except Exception as e:
-            # Return error if anything goes wrong
-            return JsonResponse({"error": str(e)}, status=500)
-
-    # For GET requests, render the form template
-    return render(request, "markov.html")
+            return JsonResponse(handler(request.POST, language))
+        except InvalidInput as error:
+            return JsonResponse({'error': error.message(language)}, status=400)
+    return view
 
 
-def random_walk_normal_view(request):
-    if request.method == "POST":
-        current_language = request.session["language"]
+SIMULATIONS = ('Número de simulações', 'Number of simulations')
+HORIZON = ('Horizonte de tempo (T)', 'Time horizon (T)')
+TIME_STEP = ('Passo de tempo (dt)', 'Time step (dt)')
+VOLATILITY = ('Volatilidade (σ)', 'Volatility (σ)')
+DRIFT = ('Drift (μ)', 'Drift (μ)')
 
-        steps = request.POST["steps"]
-        paths = request.POST["paths"]
 
-        if not steps or not paths:
-            if current_language == 'pt':
-                return JsonResponse({"error": "Parâmetros de entrada inválidos."}, status=200)
-            else: 
-                return JsonResponse({"error": "Invalid input parameters."}, status=200)
-            
-        steps = int(steps)
-        paths = int(paths)
+def _read_diffusion_grid(data):
+    """T, dt and the number of simulations, checked so the run stays small."""
+    T = read_number(data, 'T', HORIZON, above=0, maximum=100)
+    dt = read_number(data, 'dt', TIME_STEP, above=0)
+    if dt > T:
+        raise InvalidInput('O passo de tempo (dt) não pode ser maior que o horizonte (T).',
+                           'The time step (dt) cannot be greater than the horizon (T).')
+    n_simulations = read_number(data, 'n_simulations', SIMULATIONS, minimum=2, maximum=1000, integer=True)
+    check_grid(number_of_steps(T, dt), n_simulations)
+    return T, dt, n_simulations
 
-        if steps > 100 or paths > 20:
-            if current_language == 'pt':
-                return JsonResponse(
-                    {"error": "O número de passos deve ser <= 100 e o número de caminhos <= 20."}, status=200
-                )
-            else:
-                return JsonResponse(
-                    {"error": "Number of steps must be <= 100 and paths <= 20."}, status=200
-                )
 
-        simulator = RandomWalkNormalUseCase(steps, paths)
+def _diffusion_response(model):
+    return {
+        'paths_plot': model.plot_paths(),
+        'distribution_plot': model.plot_distribution(),
+        'statistics': model.statistics(),
+        'seed': model.seed,
+    }
 
-        walk_plot = simulator.plot_walks()
-        histograms_plot, statistics = simulator.plot_histograms_and_statistics()
 
-        return JsonResponse(
-            {
-                "walk_plot": walk_plot,
-                "histograms_plot": histograms_plot,
-                "statistics": statistics,
-                "language": current_language,
-            }
+@calculation
+def markov_simulator(data, language):
+    num_states = read_number(data, 'num_states', ('Número de estados', 'Number of states'), minimum=2, maximum=10, integer=True)
+    states = [name.strip() for name in data.get('states', '').split(',')]
+    if len(states) != num_states or not all(states):
+        raise InvalidInput(
+            f'Informe {num_states} nomes de estados, separados por vírgula.',
+            f'Enter {num_states} state names, separated by commas.',
         )
+    if len(set(states)) != len(states):
+        raise InvalidInput('Os nomes dos estados devem ser diferentes.', 'The state names must be different.')
 
-
-def random_walk_view(request):
-    if request.method == "POST":
-        steps = int(request.POST.get("steps", 1000))  # Valor padrão de 1000 passos
-        visualizer = RandomWalkUseCase(steps)
-
-        # Gera o gráfico e obtém a imagem em base64
-        plot_image = visualizer.generate_plot()
-
-        return JsonResponse({"plot_image": plot_image})
-
-    return render(request, "random_walk_visualization.html")
-
-
-from django.http import JsonResponse
-from django.shortcuts import render
-# Lembre-se de importar sua classe MonteCarloUseCase corretamente
-
-def monte_carlo_view(request):
-    if request.method == "POST":
-        try:
-            S0 = float(request.POST.get("S0", 100))
-            mu = float(request.POST.get("mu", 0.15))
-            sigma = float(request.POST.get("sigma", 0.3))
-            time_unit = request.POST.get("time_unit", "Ano")
-            num_periods = int(request.POST.get("num_periods", 10))
-            num_simulations = int(request.POST.get("num_simulations", 100))
-
-            simulator = MonteCarloUseCase(
-                S0, mu, sigma, time_unit, num_periods, num_simulations
+    matrix = []
+    for i in range(num_states):
+        row = [
+            read_number(data, f'transition_matrix[{i}][{j}]', (f'P({states[i]} → {states[j]})',) * 2, minimum=0, maximum=100)
+            for j in range(num_states)
+        ]
+        if abs(sum(row) - 100) > 0.01:
+            raise InvalidInput(
+                f'A linha "{states[i]}" da matriz de transição soma {sum(row):g}%; deve somar 100%.',
+                f'Row "{states[i]}" of the transition matrix adds up to {sum(row):g}%; it must add up to 100%.',
             )
-            
-            # Executa simulação
-            simulator.run_simulation()
-            
-            # Gera gráficos
-            price_plot = simulator.plot_simulation()
-            distribution_plot = simulator.get_final_price_distribution()
-            convergence_plot = simulator.plot_convergence() # NOVO
-            
-            all_stats = simulator.get_statistics()
+        matrix.append([value / 100 for value in row])
 
-            return JsonResponse(
-                {
-                    "price_plot": price_plot,
-                    "distribution_plot": distribution_plot,
-                    "convergence_plot": convergence_plot, # NOVO
-                    "stats_descriptive": all_stats['descriptive'], # Separado
-                    "stats_inferential": all_stats['inferential'], # Separado
-                }
-            )
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-    return render(request, "monte_carlo_simulation.html")
-
-
-def simulate_gbm_view(request):
-    if request.method == "POST":
-        S0 = float(request.POST.get("S0", 100))
-        mu = float(request.POST.get("mu", 0.1))
-        sigma = float(request.POST.get("sigma", 0.2))
-        T = float(request.POST.get("T", 1))
-        dt = float(request.POST.get("dt", 0.01))
-        n_simulations = int(request.POST.get("n_simulations", 10))
-
-        gbm = GeometricBrownianMotionUseCase(S0, mu, sigma, T, dt, n_simulations)
-        time_grid, simulations = gbm.simulate_paths()
-        price_plot = gbm.plot_paths(time_grid, simulations)
-        distribution_plot = gbm.plot_distribution(simulations)
-        stats = gbm.calculate_statistics(simulations)
-
-        return JsonResponse(
-            {
-                "price_plot": price_plot,
-                "distribution_plot": distribution_plot,
-                "statistics": stats,
-            }
+    initial = [
+        read_number(data, f'initial_percentages[{i}]', (f'Inicial ({states[i]})', f'Initial ({states[i]})'), minimum=0, maximum=100)
+        for i in range(num_states)
+    ]
+    if abs(sum(initial) - 100) > 0.01:
+        raise InvalidInput(
+            f'As porcentagens iniciais somam {sum(initial):g}%; devem somar 100%.',
+            f'The initial percentages add up to {sum(initial):g}%; they must add up to 100%.',
         )
+    iterations = read_number(data, 'iterations', ('Número de iterações', 'Number of iterations'), minimum=1, maximum=50, integer=True)
 
-    return render(request, "simulate_gbm.html")
+    chain = CadeiaMarkovUseCase(states, matrix, [value / 100 for value in initial], iterations, language)
+    evolution = chain.simulate()
+    return {'plot': chain.generate_plot(evolution), 'evolution': evolution, 'states': states}
 
 
-def simulate_mean_reversion_view(request):
-    if request.method == "POST":
-        S0 = float(request.POST.get("S0", 100))
-        mu = float(request.POST.get("mu", 100))
-        kappa = float(request.POST.get("kappa", 0.5))
-        sigma = float(request.POST.get("sigma", 0.2))
-        T = float(request.POST.get("T", 1))
-        dt = float(request.POST.get("dt", 0.01))
-        n_simulations = int(request.POST.get("n_simulations", 10))
+@calculation
+def random_walk_view(data, language):
+    steps = read_number(data, 'steps', ('Número de passos', 'Number of steps'), minimum=1, maximum=10000, integer=True)
+    walk = RandomWalkUseCase(steps, read_seed(data), language)
+    return {'plot_image': walk.generate_plot(), 'statistics': walk.statistics(), 'seed': walk.seed}
 
-        # Use case
-        simulator = ReversaoMediaUseCase(S0, mu, kappa, sigma, T, dt, n_simulations)
-        time_grid, simulations = simulator.simulate()
-        paths_plot = simulator.plot_paths(time_grid, simulations)
-        distribution_plot = simulator.plot_distribution(simulations)
-        stats = simulator.calculate_statistics(simulations)
 
-        return JsonResponse(
-            {
-                "paths_plot": paths_plot,
-                "distribution_plot": distribution_plot,
-                "statistics": stats,
-            }
+@calculation
+def random_walk_normal_view(data, language):
+    paths = read_number(data, 'paths', ('Número de caminhos', 'Number of paths'), minimum=1, maximum=20, integer=True)
+    steps = read_number(data, 'steps', ('Número de passos', 'Number of steps'), minimum=4, maximum=100, integer=True)
+    walks = RandomWalkNormalUseCase(steps, paths, read_seed(data), language)
+    return {
+        'walk_plot': walks.plot_walks(),
+        'histograms_plot': walks.plot_histograms(),
+        'statistics': walks.statistics(),
+        'seed': walks.seed,
+    }
+
+
+@calculation
+def monte_carlo_view(data, language):
+    S0 = read_number(data, 'S0', ('Preço inicial (S0)', 'Initial price (S0)'), above=0)
+    mu = read_number(data, 'mu', ('Retorno anual (μ)', 'Annual return (μ)'), minimum=-1, maximum=1)
+    sigma = read_number(data, 'sigma', VOLATILITY, above=0, maximum=2)
+    time_unit = read_choice(data, 'time_unit', ('Unidade de tempo', 'Time unit'), PERIOD_IN_YEARS)
+    num_periods = read_number(data, 'num_periods', ('Número de períodos', 'Number of periods'), minimum=1, maximum=1000, integer=True)
+    num_simulations = read_number(data, 'num_simulations', SIMULATIONS, minimum=2, maximum=100000, integer=True)
+    check_grid(num_periods, num_simulations, max_steps=1000)
+
+    simulator = MonteCarloUseCase(S0, mu, sigma, time_unit, num_periods, num_simulations, read_seed(data), language)
+    simulator.run_simulation()
+    statistics = simulator.get_statistics()
+    return {
+        'price_plot': simulator.plot_simulation(),
+        'distribution_plot': simulator.get_final_price_distribution(),
+        'convergence_plot': simulator.plot_convergence(),
+        'stats_descriptive': statistics['descriptive'],
+        'stats_inferential': statistics['inferential'],
+        'seed': simulator.seed,
+    }
+
+
+@calculation
+def simulate_gbm_view(data, language):
+    S0 = read_number(data, 'S0', ('Preço inicial (S₀)', 'Initial price (S₀)'), above=0)
+    mu = read_number(data, 'mu', DRIFT, minimum=-1, maximum=1)
+    sigma = read_number(data, 'sigma', VOLATILITY, above=0, maximum=2)
+    T, dt, n_simulations = _read_diffusion_grid(data)
+    return _diffusion_response(GeometricBrownianMotionUseCase(S0, mu, sigma, T, dt, n_simulations, read_seed(data), language))
+
+
+@calculation
+def simulate_abm_view(data, language):
+    X0 = read_number(data, 'X0', ('Valor inicial (X₀)', 'Initial value (X₀)'))
+    mu = read_number(data, 'mu', DRIFT)
+    sigma = read_number(data, 'sigma', VOLATILITY, above=0)
+    T, dt, n_simulations = _read_diffusion_grid(data)
+    return _diffusion_response(ArithmeticBrownianMotionUseCase(X0, mu, sigma, T, dt, n_simulations, read_seed(data), language))
+
+
+@calculation
+def simulate_mean_reversion_view(data, language):
+    S0 = read_number(data, 'S0', ('Valor inicial (X₀)', 'Initial value (X₀)'))
+    mu = read_number(data, 'mu', ('Nível médio (μ)', 'Long-term level (μ)'))
+    kappa = read_number(data, 'kappa', ('Velocidade de reversão (κ)', 'Reversion speed (κ)'), above=0)
+    sigma = read_number(data, 'sigma', VOLATILITY, above=0)
+    T, dt, n_simulations = _read_diffusion_grid(data)
+    effective_dt = T / number_of_steps(T, dt)
+    if kappa * effective_dt >= 1:
+        raise InvalidInput(
+            'κ·dt deve ser menor que 1 usando o passo efetivo da grade, senão a discretização ultrapassa a média a cada passo. Reduza o passo de tempo.',
+            'κ·dt must be less than 1 using the effective grid step, otherwise the discretisation overshoots the mean at every step. Reduce the time step.',
         )
-    return render(request, "simulate_mean_reversion.html")
-
-def comparacao_modelos_template(request):
-    return render(request, "site/processos-estocasticos/vizualizacao_modelos.html")
-
-def comparacao_modelos_view(request):
-    if request.method == "POST":
-        try:
-            s0 = float(request.POST.get("s0"))
-            mu_gbm = float(request.POST.get("mu_gbm"))
-            sigma_gbm = float(request.POST.get("sigma_gbm"))
-            mu_mr = float(request.POST.get("mu_mr"))
-            kappa_mr = float(request.POST.get("kappa_mr"))
-            sigma_mr = float(request.POST.get("sigma_mr"))
-            t = float(request.POST.get("t"))
-            dt = float(request.POST.get("dt"))
-
-            use_case = ComparacaoModelosUseCase(
-                S0=s0,
-                mu_gbm=mu_gbm,
-                sigma_gbm=sigma_gbm,
-                mu_mr=mu_mr,
-                kappa_mr=kappa_mr,
-                sigma_mr=sigma_mr,
-                T=t,
-                dt=dt,
-            )
-            plot_image = use_case.generate_plot()
-
-            return JsonResponse({"plot_image": plot_image})
-        except (ValueError, TypeError) as e:
-            return JsonResponse({"error": str(e)}, status=400)
-    return JsonResponse({"error": "Invalid request method"}, status=405)
+    return _diffusion_response(ReversaoMediaUseCase(S0, mu, kappa, sigma, T, dt, n_simulations, read_seed(data), language))
 
 
-def simulate_abm_view(request):
-    if request.method == "POST":
-        try:
-            X0 = float(request.POST.get("X0", 100))
-            mu = float(request.POST.get("mu", 2.0))
-            sigma = float(request.POST.get("sigma", 10.0))
-            T = float(request.POST.get("T", 1))
-            dt = float(request.POST.get("dt", 0.01))
-            n_simulations = int(request.POST.get("n_simulations", 10))
-
-            abm_model = ArithmeticBrownianMotionUseCase(X0, mu, sigma, T, dt, n_simulations)
-            time_grid, simulations = abm_model.simulate_paths()
-            paths_plot = abm_model.plot_paths(time_grid, simulations)
-            distribution_plot = abm_model.plot_distribution(simulations)
-            stats = abm_model.calculate_statistics(simulations)
-
-            return JsonResponse(
-                {
-                    "paths_plot": paths_plot,
-                    "distribution_plot": distribution_plot,
-                    "statistics": stats,
-                }
-            )
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request method"}, status=405)
+@calculation
+def comparacao_modelos_view(data, language):
+    s0 = read_number(data, 's0', ('Valor inicial (S0)', 'Initial value (S0)'), above=0)
+    T = read_number(data, 't', ('Tempo total (T)', 'Total time (T)'), above=0, maximum=100)
+    dt = read_number(data, 'dt', TIME_STEP, above=0)
+    if dt > T:
+        raise InvalidInput('O passo de tempo (dt) não pode ser maior que o tempo total (T).',
+                           'The time step (dt) cannot be greater than the total time (T).')
+    mu_gbm = read_number(data, 'mu_gbm', ('Taxa de drift do MBG (μ)', 'GBM drift rate (μ)'), minimum=-1, maximum=1)
+    sigma_gbm = read_number(data, 'sigma_gbm', ('Volatilidade do MBG (σ)', 'GBM volatility (σ)'), above=0, maximum=2)
+    kappa_mr = read_number(data, 'kappa_mr', ('Velocidade de reversão (κ)', 'Reversion speed (κ)'), above=0)
+    mu_mr = read_number(data, 'mu_mr', ('Nível de longo prazo (μ)', 'Long-term level (μ)'))
+    sigma_mr = read_number(data, 'sigma_mr', ('Volatilidade da reversão (σ)', 'Mean reversion volatility (σ)'), above=0)
+    check_grid(number_of_steps(T, dt), 1)
+    effective_dt = T / number_of_steps(T, dt)
+    if kappa_mr * effective_dt >= 1:
+        raise InvalidInput(
+            'κ·dt deve ser menor que 1 usando o passo efetivo da grade, senão a discretização ultrapassa a média a cada passo. Reduza o passo de tempo.',
+            'κ·dt must be less than 1 using the effective grid step, otherwise the discretisation overshoots the mean at every step. Reduce the time step.',
+        )
+    comparison = ComparacaoModelosUseCase(s0, mu_gbm, sigma_gbm, mu_mr, kappa_mr, sigma_mr, T, dt, read_seed(data), language)
+    return {'plot_image': comparison.generate_plot(), 'final_values': comparison.final_values(), 'seed': comparison.seed}

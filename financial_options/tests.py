@@ -18,6 +18,22 @@ BLACK_SCHOLES_RESULTS = {
     'payoff_plot': PNG, 'interpretation': '<p>Interpretação</p>',
 }
 
+CASH_FLOW_VOLATILITY_PARAMETERS = {
+    'initialInvestment': 500000, 'discountRate': 10, 'numPeriods': 3, 'numSimulations': 1000,
+    'uncertaintyPercent': 10, 'seed': 12345,
+    'cash_flows': [125000, 150000, 175000], 'std_devs': [12500, 15000, 17500],
+}
+CASH_FLOW_VOLATILITY_RESULTS = {
+    'volatility': 0.0431, 'mean_z': 0.0934, 'std_z': 0.0431, 'min_z': -0.0502, 'max_z': 0.2251,
+    'mean_npv': -116100.5, 'std_npv': 20012.3, 'markowitz_cv': None, 'var_5': -149000.1,
+    'var_volatility': None, 'log_cf_volatility': 0.1003, 'chart': PNG,
+}
+
+DIFFUSION_STATISTICS = {
+    'mean': 101.75, 'mean_theoretical': 102.0, 'std': 10.2, 'std_theoretical': 10.0,
+    'variance': 104.04, 'variance_theoretical': 100.0, 'min': 75.1, 'max': 130.2, 'p5': 85.0, 'p95': 118.4,
+}
+
 # One saved payload per model type, shaped like what each screen sends.
 FIXTURES = {
     Choices.BLACK_SCHOLES: (
@@ -92,10 +108,70 @@ FIXTURES = {
          'mean_discrete': 0.0207638, 'mean_continuous': 0.0180815,
          'volatility_discrete': 0.0831412, 'volatility_continuous': 0.0810478, 'chart': PNG},
     ),
+    Choices.BINOMIAL_REAL_OPTION: (
+        {'initialValue': 1000000, 'strikePrice': 900000, 'timeToMaturity': 5, 'riskFreeRate': 5,
+         'volatility': 20, 'steps': 2, 'optionType': 'call', 'exerciseStyle': 'european'},
+        {'option_value': 338677.52, 'up_factor': 1.371943, 'down_factor': 0.728893, 'probability': 0.628653,
+         'dt': 2.5, 'traditional_npv': 100000, 'expanded_npv': 438677.52, 'flexibility_value': 338677.52,
+         'option_ratio': 0.376308,
+         'value_tree': [[1000000], [728893.41, 1371942.7], [531285.61, 1000000, 1882226.78]],
+         'option_tree': [[338677.52], [55478.46, 577695.49], [0, 100000, 982226.78]]},
+    ),
+    Choices.COPELAND_ANTIKAROV: (
+        CASH_FLOW_VOLATILITY_PARAMETERS,
+        {**CASH_FLOW_VOLATILITY_RESULTS, 'v0': 645426.21},
+    ),
+    Choices.HERATH_PARK: (
+        CASH_FLOW_VOLATILITY_PARAMETERS,
+        {**CASH_FLOW_VOLATILITY_RESULTS, 'volatility': 0.0612, 'std_z': 0.0612, 'ca_volatility': 0.0431},
+    ),
+    Choices.MARKOV_CHAIN: (
+        {'num_states': 2, 'states': ['Sol', 'Chuva'], 'transition_matrix': [[90, 10], [50, 50]],
+         'initial_percentages': [100, 0], 'iterations': 2},
+        {'evolution': [[1.0, 0.0], [0.9, 0.1], [0.86, 0.14]], 'plot': PNG},
+    ),
+    Choices.RANDOM_WALK: (
+        {'steps': 100, 'seed': 42},
+        {'statistics': {
+            'normal': {'final': 3.21, 'min': -5.5, 'max': 9.1, 'std_theoretical': 10.0},
+            'uniform': {'final': -1.2, 'min': -4.0, 'max': 2.5, 'std_theoretical': 5.7735},
+            'discrete': {'final': 4.0, 'min': -6.0, 'max': 8.0, 'std_theoretical': 10.0},
+        }, 'plot': PNG},
+    ),
+    Choices.RANDOM_WALK_NORMAL: (
+        {'paths': 5, 'steps': 100, 'seed': 42},
+        {'statistics': [
+            {'share': share, 'stats': {'min': -3.0, 'max': 4.0, 'mean': 0.25, 'median': 0.2, 'variance': 2.5, 'std': 1.5811}}
+            for share in (25, 50, 75, 100)
+        ], 'walk_plot': PNG, 'histograms_plot': PNG},
+    ),
+    Choices.ARITHMETIC_BROWNIAN_MOTION: (
+        {'X0': 100, 'mu': 2.0, 'sigma': 10.0, 'T': 1, 'dt': 0.01, 'n_simulations': 10, 'seed': 42},
+        {'statistics': DIFFUSION_STATISTICS, 'paths_plot': PNG, 'distribution_plot': PNG},
+    ),
+    Choices.GBM_MONTE_CARLO: (
+        {'S0': 100, 'mu': 0.15, 'sigma': 0.3, 'time_unit': 'Mês', 'num_periods': 10, 'num_simulations': 100, 'seed': 42},
+        {'stats_descriptive': {'mean': 113.2, 'std': 30.1, 'min': 50.2, 'max': 210.9, 'expected_return': 13.2},
+         'stats_inferential': {'mean': 113.2, 'standard_error': 3.01, 'ci_lower': 107.3, 'ci_upper': 119.1},
+         'price_plot': PNG, 'distribution_plot': PNG, 'convergence_plot': PNG},
+    ),
+    Choices.GBM_ITO: (
+        {'S0': 100, 'mu': 0.1, 'sigma': 0.2, 'T': 1, 'dt': 0.01, 'n_simulations': 10, 'seed': 42},
+        {'statistics': DIFFUSION_STATISTICS, 'paths_plot': PNG, 'distribution_plot': PNG},
+    ),
+    Choices.MEAN_REVERSION: (
+        {'S0': 80, 'mu': 100, 'kappa': 1, 'sigma': 5, 'T': 2, 'dt': 0.01, 'n_simulations': 10, 'seed': 42},
+        {'statistics': DIFFUSION_STATISTICS, 'paths_plot': PNG, 'distribution_plot': PNG},
+    ),
+    Choices.MODELS_COMPARISON: (
+        {'s0': 100, 't': 1, 'dt': 0.01, 'mu_gbm': 0.1, 'sigma_gbm': 0.2, 'kappa_mr': 0.5, 'mu_mr': 100,
+         'sigma_mr': 10, 'seed': 42},
+        {'final_values': {'random_walk': 93.67, 'gbm': 148.97, 'mean_reversion': 100.18}, 'plot_image': PNG},
+    ),
 }
 
 # Inputs whose value is one of a fixed set, so the report has to translate the value too.
-CHOICE_KEYS = ('option_type', 'simulationType', 'strategyType')
+CHOICE_KEYS = ('option_type', 'simulationType', 'strategyType', 'optionType', 'exerciseStyle', 'time_unit')
 
 # The URL each screen is first opened from (sidebar / overview cards).
 SCREEN_URL_NAMES = {
@@ -111,6 +187,17 @@ SCREEN_URL_NAMES = {
     Choices.BULL_BEAR_SPREAD: 'bull_bear_spread',
     Choices.COLLAR: 'collar_strategy_simulator',
     Choices.RETURN_VOLATILITY: 'volatilidade_template',
+    Choices.BINOMIAL_REAL_OPTION: 'binomial_model',
+    Choices.COPELAND_ANTIKAROV: 'copeland_antikarov_volatility',
+    Choices.HERATH_PARK: 'herath_park_volatility',
+    Choices.MARKOV_CHAIN: 'cadeia_markov',
+    Choices.RANDOM_WALK: 'random_walk_template',
+    Choices.RANDOM_WALK_NORMAL: 'random_walk_normal',
+    Choices.ARITHMETIC_BROWNIAN_MOTION: 'abm',
+    Choices.GBM_MONTE_CARLO: 'monte_carlos',
+    Choices.GBM_ITO: 'mbg_ito',
+    Choices.MEAN_REVERSION: 'modelo_reversao_media',
+    Choices.MODELS_COMPARISON: 'vizualizacao_modelos',
 }
 
 
@@ -353,7 +440,135 @@ class ReturnVolatilityTests(LoggedInTestCase):
                 self.assertNotContains(response, 'let returnsChart;')
 
 
+class BinomialRealOptionTests(LoggedInTestCase):
+    def test_report_formats_results_and_lists_the_lattice_nodes(self):
+        simulation = self.create_simulation(Choices.BINOMIAL_REAL_OPTION)
+
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        parameters = response.context['parameters']
+        self.assertEqual(parameters['Tipo de Opção'], 'Opção de Compra (Opção de Investir)')
+        self.assertEqual(parameters['Estilo de Exercício'], 'Europeia')
+        results = response.context['results']
+        self.assertEqual(results['Valor da Opção Real'], 'R$ 338.677,52')
+        self.assertEqual(results['Probabilidade Neutra ao Risco (p)'], '62,87%')
+        self.assertEqual(results['Fator de Subida (u)'], '1,3719')
+        table = response.context['tables'][0]
+        self.assertEqual(table['headers'][2], 'Valor do Projeto')
+        # One row per node (1 + 2 + 3), highest node of each step first.
+        self.assertEqual(len(table['rows']), 6)
+        self.assertEqual(table['rows'][0], [0, 0, 'R$ 1.000.000,00', 'R$ 338.677,52'])
+        self.assertEqual(table['rows'][3], [2, 2, 'R$ 1.882.226,78', 'R$ 982.226,78'])
+        self.assertEqual(table['rows'][5], [2, 0, 'R$ 531.285,61', 'R$ 0,00'])
+
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters']['Exercise Style'], 'European')
+        self.assertEqual(response.context['results']['Expanded NPV (with option value)'], 'R$ 438,677.52')
+        self.assertEqual(response.context['tables'][0]['rows'][1], [1, 1, 'R$ 1,371,942.70', 'R$ 577,695.49'])
+
+    def test_report_leaves_out_a_lattice_too_long_to_print(self):
+        simulation = self.create_simulation(Choices.BINOMIAL_REAL_OPTION)
+        tree = [[100.0] * (step + 1) for step in range(22)]
+        simulation.results = {**simulation.results, 'value_tree': tree, 'option_tree': tree}
+        simulation.save()
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        table = response.context['tables'][0]
+        self.assertEqual(table['rows'], [])
+        self.assertIn('21 passos', table['note'])
+        self.assertContains(response, 'class="table-note"')
+        self.assertNotContains(response, 'class="data-table"')
+
+    def test_rerun_selects_the_saved_choices(self):
+        simulation = self.create_simulation(Choices.BINOMIAL_REAL_OPTION)
+        simulation.parameters = {**simulation.parameters, 'optionType': 'put', 'exerciseStyle': 'american'}
+        simulation.save()
+        response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        self.assertContains(response, '<option value="put" selected>')
+        self.assertContains(response, '<option value="american" selected>')
+        self.assertContains(response, 'id="steps" class="form-control" min="1" max="50" step="1" value="2"')
+
+    def test_screen_rejects_a_probability_outside_0_1(self):
+        for language, message in (('pt', 'fora do intervalo de 0 a 1'), ('en', 'outside 0 to 1')):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('binomial_model'))
+                self.assertContains(response, message)
+                self.assertContains(response, 'if (!(p > 0 && p < 1)) return null;')
+                self.assertNotContains(response, 'onclick="calculateOptions()"')
+
+
+class CashFlowVolatilityTests(LoggedInTestCase):
+    def test_report_shows_the_cash_flows_in_the_table_and_marks_a_negative_npv(self):
+        simulation = self.create_simulation(Choices.COPELAND_ANTIKAROV)
+
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        parameters = response.context['parameters']
+        self.assertNotIn('Fluxos de Caixa Esperados', parameters)
+        self.assertEqual(parameters['Semente'], 12345)
+        results = response.context['results']
+        self.assertEqual(results['Volatilidade estimada (Copeland & Antikarov)'], '4,31%')
+        self.assertEqual(results['V₀ (VP dos fluxos esperados)'], 'R$ 645.426,21')
+        self.assertEqual(results['Markowitz: coeficiente de variação do VPL (σ)'], 'N/D (VPL médio ≤ 0)')
+        self.assertEqual(response.context['tables'][0]['rows'][1], [2, 'R$ 150.000,00', 'R$ 15.000,00'])
+
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters']['Seed'], 12345)
+        self.assertEqual(response.context['results']['VaR(5%) approach (σ)'], 'N/A (mean NPV ≤ 0)')
+
+    def test_herath_park_report_compares_with_copeland_antikarov(self):
+        simulation = self.create_simulation(Choices.HERATH_PARK)
+        simulation.results = {**simulation.results, 'mean_npv': 100000, 'markowitz_cv': 0.2001}
+        simulation.save()
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        results = response.context['results']
+        self.assertEqual(results['Volatilidade estimada (Herath & Park)'], '6,12%')
+        self.assertEqual(results['Abordagem de Copeland & Antikarov (σ), para comparação'], '4,31%')
+        self.assertEqual(results['Markowitz: coeficiente de variação do VPL (σ)'], '20,01%')
+
+    def test_rerun_fills_the_seed_and_the_cash_flow_table(self):
+        simulation = self.create_simulation(Choices.HERATH_PARK)
+        response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        self.assertContains(response, 'id="seed" class="form-control" min="0" max="4294967295" step="1" value="12345"')
+        self.assertContains(response, '"cash_flows": [125000, 150000, 175000], "std_devs": [12500, 15000, 17500]')
+        self.assertContains(response, "modelType: 'HERATH_PARK'")
+
+    def test_screens_draw_from_the_seeded_generator(self):
+        for url_name in ('copeland_antikarov_volatility', 'herath_park_volatility'):
+            for language, message in (('pt', 'Deixe vazio para sorteios novos'), ('en', 'Leave empty for new random draws')):
+                with self.subTest(url_name=url_name, language=language):
+                    self.set_language(language)
+                    response = self.client.get(reverse(url_name))
+                    self.assertContains(response, message)
+                    self.assertContains(response, 'saetoRandom(p.seed)')
+                    self.assertNotContains(response, 'Math.random')
+                    self.assertNotContains(response, 'onclick=')
+
+
 class RerunViewTests(LoggedInTestCase):
+    def test_stochastic_reruns_keep_the_translated_statistic_labels(self):
+        model_types = (
+            Choices.RANDOM_WALK, Choices.RANDOM_WALK_NORMAL,
+            Choices.ARITHMETIC_BROWNIAN_MOTION, Choices.GBM_ITO,
+            Choices.MEAN_REVERSION, Choices.GBM_MONTE_CARLO,
+        )
+        for model_type in model_types:
+            simulation = self.create_simulation(model_type)
+            for language, expected in (('pt', 'Desvio padrão'), ('en', 'Standard deviation')):
+                with self.subTest(model_type=model_type, language=language):
+                    self.set_language(language)
+                    initial = self.client.get(reverse(SCREEN_URL_NAMES[model_type]))
+                    rerun = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+                    self.assertEqual(rerun.context['stat_labels'], initial.context['stat_labels'])
+                    self.assertEqual(rerun.context['stat_labels']['std'], expected)
+                    if model_type in (Choices.RANDOM_WALK, Choices.RANDOM_WALK_NORMAL):
+                        self.assertContains(rerun, expected)
+                    else:
+                        self.assertContains(rerun, f'"std": {json.dumps(expected)}')
+                    self.assertNotContains(rerun, '<th></th>')
+
     def test_rerun_renders_the_registry_template_for_every_type(self):
         for model_type, spec in REGISTRY.items():
             with self.subTest(model_type=model_type):
@@ -395,7 +610,9 @@ class ScreenFirstLoadTests(LoggedInTestCase):
             with self.subTest(model_type=model_type):
                 response = self.client.get(reverse(url_name))
                 self.assertContains(response, 'name="csrfmiddlewaretoken"')
-                self.assertContains(response, 'saetoSaveProject({')
+                # Screens that calculate on the server save through saetoServerScreen, which calls saetoSaveProject.
+                content = response.content.decode()
+                self.assertTrue('saetoSaveProject({' in content or 'saetoServerScreen;' in content)
                 self.assertContains(response, f"modelType: '{model_type}'")
                 self.assertContains(response, reverse('save_financial_model'))
                 # The helper owns the request; no screen builds its own save fetch any more.

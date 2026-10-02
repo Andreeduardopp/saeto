@@ -1,0 +1,7 @@
+<div class="form-group mb-3">
+    <label for="seed">{% if request.session.language == 'en' %}Seed (optional):{% else %}Semente (opcional):{% endif %}</label>
+    <input type="number" class="form-control" id="seed" name="seed" min="0" max="4294967295" step="1" value="{{ initial_data.seed }}">
+    <small class="form-text text-muted">
+        {% if request.session.language == 'en' %}Leave empty for new random draws. The same seed repeats the same simulation.{% else %}Deixe vazio para sorteios novos. A mesma semente repete a mesma simulação.{% endif %}
+    </small>
+</div>

@@ -1,0 +1,15 @@
+<div class="form-group mb-3">
+    <label for="T">{% if request.session.language == 'en' %}Time Horizon (T in years):{% else %}Horizonte de Tempo (T em anos):{% endif %}</label>
+    <input type="number" class="form-control" id="T" name="T" value="{{ initial_data.T }}" min="0.01" max="100" step="any" required>
+</div>
+<div class="form-group mb-3">
+    <label for="dt">{% if request.session.language == 'en' %}Time Step (dt):{% else %}Passo de Tempo (dt):{% endif %}</label>
+    <input type="number" class="form-control" id="dt" name="dt" value="{{ initial_data.dt }}" min="0.0001" step="any" required>
+    <small class="form-text text-muted">
+        {% if request.session.language == 'en' %}The grid uses T / dt steps, rounded, so it ends exactly at T (at most 10,000 steps).{% else %}A grade usa T / dt passos, arredondado, para terminar exatamente em T (no máximo 10.000 passos).{% endif %}
+    </small>
+</div>
+<div class="form-group mb-3">
+    <label for="n_simulations">{% if request.session.language == 'en' %}Number of Simulations (2 to 1,000):{% else %}Número de Simulações (2 a 1.000):{% endif %}</label>
+    <input type="number" class="form-control" id="n_simulations" name="n_simulations" value="{{ initial_data.n_simulations }}" min="2" max="1000" step="1" required>
+</div>

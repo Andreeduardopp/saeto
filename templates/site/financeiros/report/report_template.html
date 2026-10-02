@@ -89,6 +89,10 @@
             padding: 4px 8px;
             text-align: right;
         }
+        .table-note {
+            font-size: 10pt;
+            color: #555;
+        }
         .chart-container {
             text-align: center;
             margin-top: 20px;
@@ -213,6 +217,8 @@
 
     {% for table in tables %}
         <h3>{{ table.title }}</h3>
+        {% if table.note %}<p class="table-note">{{ table.note }}</p>{% endif %}
+        {% if table.rows %}
         <table class="data-table">
             <thead><tr>{% for header in table.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
             <tbody>
@@ -221,6 +227,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% endif %}
     {% endfor %}
 
     {% if interpretation %}

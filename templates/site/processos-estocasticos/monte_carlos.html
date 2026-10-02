@@ -1,113 +1,82 @@
-
 <div class="container mt-5">
-        {% if request.session.language == 'en' %}
-        <h1>Monte Carlo Simulation for Stock Prices</h1>
-        {% else %}
-        <h1>Simulação de Monte Carlo para Preços de Ações</h1>
-        {% endif %}
-    <form id="monteCarloForm" method="post" action="{% url 'monte_carlos_simulator' %}">
+    {% if request.session.language == 'en' %}
+    <h1>Monte Carlo Simulation for Stock Prices</h1>
+    <p>Geometric Brownian Motion paths by the exact solution Sₜ = S₀·exp((μ − σ²/2)t + σWₜ), with μ and σ annual and one step per period.</p>
+    {% else %}
+    <h1>Simulação de Monte Carlo para Preços de Ações</h1>
+    <p>Trajetórias do Movimento Browniano Geométrico pela solução exata Sₜ = S₀·exp((μ − σ²/2)t + σWₜ), com μ e σ anuais e um passo por período.</p>
+    {% endif %}
+
+    <form id="monteCarloForm" novalidate>
         {% csrf_token %}
-        <div class="form-group">
-            <label for="S0">
-                {% if request.session.language == 'en' %}Initial Price (S0):{% else %}Preço Inicial (S0):{% endif %}
-            </label>
-            <input type="number" class="form-control" id="S0" name="S0" value="100" min="1" step="0.01" required>
+        <div class="form-group mb-3">
+            <label for="S0">{% if request.session.language == 'en' %}Initial Price (S0):{% else %}Preço Inicial (S0):{% endif %}</label>
+            <input type="number" class="form-control" id="S0" name="S0" value="{{ initial_data.S0 }}" min="0.01" step="any" required>
         </div>
-        <div class="form-group">
-            <label for="mu">
-                {% if request.session.language == 'en' %}Annual Return (mu):{% else %}Retorno Anual (mu):{% endif %}
-            </label>
-            <input type="number" class="form-control" id="mu" name="mu" value="0.15" step="0.0001" max="1" required>
+        <div class="form-group mb-3">
+            <label for="mu">{% if request.session.language == 'en' %}Annual Return (μ, as a decimal: 0.15 = 15%):{% else %}Retorno Anual (μ, em decimal: 0,15 = 15%):{% endif %}</label>
+            <input type="number" class="form-control" id="mu" name="mu" value="{{ initial_data.mu }}" min="-1" max="1" step="any" required>
         </div>
-        <div class="form-group">
-            <label for="sigma">
-                {% if request.session.language == 'en' %}Volatility (sigma):{% else %}Volatilidade (sigma):{% endif %}
-            </label>
-            <input type="number" class="form-control" id="sigma" name="sigma" value="0.3" step="0.0001" max="1" required>
+        <div class="form-group mb-3">
+            <label for="sigma">{% if request.session.language == 'en' %}Annual Volatility (σ, as a decimal):{% else %}Volatilidade Anual (σ, em decimal):{% endif %}</label>
+            <input type="number" class="form-control" id="sigma" name="sigma" value="{{ initial_data.sigma }}" min="0.0001" max="2" step="any" required>
         </div>
-        <div class="form-group">
-            <label for="time_unit">
-                {% if request.session.language == 'en' %}Time Unit:{% else %}Unidade de Tempo:{% endif %}
-            </label>
-            <select class="form-control" id="time_unit" name="time_unit" required>
-                {% if request.session.language == 'en' %}
-                <option value="Dia">Day</option>
-                <option value="Semana">Week</option>
-                <option value="Mês">Month</option>
-                <option value="Ano">Year</option>
-                {% else %}
-                <option value="Dia">Dia</option>
-                <option value="Semana">Semana</option>
-                <option value="Mês">Mês</option>
-                <option value="Ano">Ano</option>
-                {% endif %}
+        <div class="form-group mb-3">
+            <label for="time_unit">{% if request.session.language == 'en' %}Time Unit (one period):{% else %}Unidade de Tempo (um período):{% endif %}</label>
+            <select class="form-select" id="time_unit" name="time_unit">
+                <option value="Dia" {% if initial_data.time_unit == 'Dia' %}selected{% endif %}>{% if request.session.language == 'en' %}Day (1/252 year){% else %}Dia (1/252 ano){% endif %}</option>
+                <option value="Semana" {% if initial_data.time_unit == 'Semana' %}selected{% endif %}>{% if request.session.language == 'en' %}Week (1/52 year){% else %}Semana (1/52 ano){% endif %}</option>
+                <option value="Mês" {% if initial_data.time_unit == 'Mês' %}selected{% endif %}>{% if request.session.language == 'en' %}Month (1/12 year){% else %}Mês (1/12 ano){% endif %}</option>
+                <option value="Ano" {% if initial_data.time_unit == 'Ano' %}selected{% endif %}>{% if request.session.language == 'en' %}Year{% else %}Ano{% endif %}</option>
             </select>
         </div>
-        <div class="form-group">
-            <label for="num_periods">
-                {% if request.session.language == 'en' %}Number of Periods:{% else %}Número de Períodos:{% endif %}
-            </label>
-            <input type="number" class="form-control" id="num_periods" name="num_periods" value="10" min="1" required>
+        <div class="form-group mb-3">
+            <label for="num_periods">{% if request.session.language == 'en' %}Number of Periods (1 to 1,000):{% else %}Número de Períodos (1 a 1.000):{% endif %}</label>
+            <input type="number" class="form-control" id="num_periods" name="num_periods" value="{{ initial_data.num_periods }}" min="1" max="1000" step="1" required>
         </div>
-        <div class="form-group">
-            <label for="num_simulations">
-                {% if request.session.language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
-            </label>
-            <input type="number" class="form-control" id="num_simulations" name="num_simulations" value="100" min="1" required>
+        <div class="form-group mb-3">
+            <label for="num_simulations">{% if request.session.language == 'en' %}Number of Simulations (2 to 100,000):{% else %}Número de Simulações (2 a 100.000):{% endif %}</label>
+            <input type="number" class="form-control" id="num_simulations" name="num_simulations" value="{{ initial_data.num_simulations }}" min="2" max="100000" step="1" required>
         </div>
-        <button type="button" class="btn btn-primary" onclick="submitMonteCarloForm()">
-            {% if request.session.language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
-        </button>
+        {% include "site/processos-estocasticos/_seed_input.html" %}
+        {% include "site/processos-estocasticos/_run_controls.html" %}
     </form>
 
-    <!-- Result Section -->
-<div class="result-section" id="resultSection" style="display: none;">
-        <h3>
-            {% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}
-        </h3>
-        
+    <div id="resultsContainer" style="display: none;">
+        <h3>{% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}</h3>
+        {% include "site/processos-estocasticos/_seed_used.html" %}
         <div class="row mb-4">
-            <div class="col-md-6">
-                <img id="pricePlot" class="img-fluid border rounded" alt="Gráfico de Preço">
-            </div>
-            <div class="col-md-6">
-                <img id="distributionPlot" class="img-fluid border rounded" alt="Distribuição dos Preços Finais">
-            </div>
+            <div class="col-md-6"><img id="pricePlot" class="img-fluid border rounded" alt="{% if request.session.language == 'en' %}Price paths{% else %}Evolução dos preços{% endif %}"></div>
+            <div class="col-md-6"><img id="distributionPlot" class="img-fluid border rounded" alt="{% if request.session.language == 'en' %}Distribution of the final prices{% else %}Distribuição dos preços finais{% endif %}"></div>
         </div>
-
         <div class="row mb-4">
             <div class="col-md-12 text-center">
-                <img id="convergencePlot" class="img-fluid border rounded" style="max-width: 80%;" alt="Gráfico de Convergência">
+                <img id="convergencePlot" class="img-fluid border rounded" style="max-width: 80%;" alt="{% if request.session.language == 'en' %}Convergence{% else %}Convergência{% endif %}">
             </div>
         </div>
-
         <div class="row">
             <div class="col-md-6">
-                <h4>
-                    {% if request.session.language == 'en' %}Descriptive Statistics{% else %}Estatísticas Descritivas{% endif %}
-                </h4>
-                <table class="table table-bordered table-striped" id="descStatsTable">
+                <h4>{% if request.session.language == 'en' %}Descriptive Statistics (final price){% else %}Estatísticas Descritivas (preço final){% endif %}</h4>
+                <table class="table table-bordered table-striped">
                     <thead class="table-dark">
                         <tr>
                             <th>{% if request.session.language == 'en' %}Metric{% else %}Métrica{% endif %}</th>
                             <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody id="descStatsTable"></tbody>
                 </table>
             </div>
-
             <div class="col-md-6">
-                <h4>
-                    {% if request.session.language == 'en' %}Inferential Statistics (Mean & CI){% else %}Estatística Inferencial (Média e IC){% endif %}
-                </h4>
-                <table class="table table-bordered table-striped" id="infStatsTable">
-                    <thead class="table-info"> <tr>
+                <h4>{% if request.session.language == 'en' %}Inferential Statistics (Mean & CI){% else %}Estatística Inferencial (Média e IC){% endif %}</h4>
+                <table class="table table-bordered table-striped">
+                    <thead class="table-info">
+                        <tr>
                             <th>{% if request.session.language == 'en' %}Statistic{% else %}Estatística{% endif %}</th>
                             <th>{% if request.session.language == 'en' %}Value{% else %}Valor{% endif %}</th>
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody id="infStatsTable"></tbody>
                 </table>
                 <small class="text-muted">
                     * {% if request.session.language == 'en' %}Based on 95% Confidence Interval (Z=1.96){% else %}Baseado no Intervalo de Confiança de 95% (Z=1,96){% endif %}
@@ -125,50 +94,41 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+{{ stat_labels|json_script:"statLabels" }}
 <script>
-    function submitMonteCarloForm() {
-        const form = $('#monteCarloForm');
-        const btn = form.find('button');
-        
-        btn.prop('disabled', true).text('Processando...');
-        
-        $.ajax({
-            url: form.attr('action'),
-            method: 'POST',
-            data: form.serialize(),
-            success: function(data) {
-                $('#resultSection').fadeIn();
-                
-                $('#pricePlot').attr('src', 'data:image/png;base64,' + data.price_plot);
-                $('#distributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
-                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot);
-            
-                function fillTable(tableId, dataObj) {
-                    const tbody = $(tableId + ' tbody');
-                    tbody.empty();
-                    for (const [key, value] of Object.entries(dataObj)) {
-                        let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
-                        if(key.includes("Limite") || key.includes("Bound")) {
-                            displayValue = `<strong>${displayValue}</strong>`;
-                        }
-                        tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
-                    }
-                }
+(function () {
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const screen = window.saetoServerScreen;
+    const form = document.getElementById('monteCarloForm');
+    const labels = JSON.parse(document.getElementById('statLabels').textContent);
 
-                fillTable('#descStatsTable', data.stats_descriptive);
-                fillTable('#infStatsTable', data.stats_inferential);
-            },
-            error: function(xhr) {
-                let msg = "Erro desconhecido";
-                if(xhr.responseJSON && xhr.responseJSON.error) {
-                    msg = xhr.responseJSON.error;
-                }
-                alert("Erro: " + msg);
-            },
-            complete: function() {
-                btn.prop('disabled', false).text('{% if request.session.language == "en" %}Run Simulation{% else %}Executar Simulação{% endif %}');
-            }
-        });
-    }
+    screen({
+        form,
+        url: '{% url "monte_carlos_simulator" %}',
+        saveUrl: '{% url "save_financial_model" %}',
+        modelType: 'GBM_MONTE_CARLO',
+        lang,
+        resultsContainer: document.getElementById('resultsContainer'),
+        errorBox: document.getElementById('screenError'),
+        submitButton: document.getElementById('runButton'),
+        resetButton: document.getElementById('resetButton'),
+        saveButton: document.getElementById('saveProjectButton'),
+        readParameters: () => screen.readForm(form, {
+            S0: 'number', mu: 'number', sigma: 'number', time_unit: 'text', num_periods: 'number', num_simulations: 'number',
+        }),
+        render(data) {
+            const plots = {
+                price_plot: screen.dataUri(data.price_plot),
+                distribution_plot: screen.dataUri(data.distribution_plot),
+                convergence_plot: screen.dataUri(data.convergence_plot),
+            };
+            document.getElementById('pricePlot').src = plots.price_plot;
+            document.getElementById('distributionPlot').src = plots.distribution_plot;
+            document.getElementById('convergencePlot').src = plots.convergence_plot;
+            screen.fillStats(document.getElementById('descStatsTable'), data.stats_descriptive, labels, lang);
+            screen.fillStats(document.getElementById('infStatsTable'), data.stats_inferential, labels, lang);
+            return { stats_descriptive: data.stats_descriptive, stats_inferential: data.stats_inferential, ...plots };
+        },
+    });
+})();
 </script>

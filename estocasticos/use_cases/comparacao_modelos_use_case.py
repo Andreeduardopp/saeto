@@ -1,10 +1,17 @@
-import numpy as np
 import matplotlib.pyplot as plt
-import io
-import base64
+import numpy as np
+
+from estocasticos.use_cases.simulation_support import encode_figure, make_rng, number_of_steps, t, time_grid
+
 
 class ComparacaoModelosUseCase:
-    def __init__(self, S0, mu_gbm, sigma_gbm, mu_mr, kappa_mr, sigma_mr, T, dt):
+    """
+    One path of each model on the same time grid, from the same S₀:
+    random walk (Xₜ = Xₜ₋₁ + ε, ε ~ N(0, 1) per step), GBM (Euler) and
+    mean reversion (Ornstein-Uhlenbeck, Euler).
+    """
+
+    def __init__(self, S0, mu_gbm, sigma_gbm, mu_mr, kappa_mr, sigma_mr, T, dt, seed=None, language='pt'):
         self.S0 = S0
         self.mu_gbm = mu_gbm
         self.sigma_gbm = sigma_gbm
@@ -12,62 +19,44 @@ class ComparacaoModelosUseCase:
         self.kappa_mr = kappa_mr
         self.sigma_mr = sigma_mr
         self.T = T
-        self.dt = dt
-        self.steps = int(T / dt)
+        self.steps = number_of_steps(T, dt)
+        self.dt = T / self.steps
+        self.language = language
+        self.rng, self.seed = make_rng(seed)
+        self.paths = self._simulate()
 
-    def _simulate_random_walk(self):
-        X = np.zeros(self.steps)
-        X[0] = self.S0
-        for t in range(1, self.steps):
-            epsilon = np.random.normal(0, 1)
-            X[t] = X[t - 1] + epsilon
-        return X
+    def _simulate(self):
+        rw_shocks = self.rng.normal(0, 1, self.steps)
+        gbm_dW = self.rng.normal(0, np.sqrt(self.dt), self.steps)
+        mr_dW = self.rng.normal(0, np.sqrt(self.dt), self.steps)
 
-    def _simulate_gbm(self):
-        n_steps = self.steps
-        simulations = np.zeros(n_steps)
-        simulations[0] = self.S0
+        random_walk = self.S0 + np.concatenate(([0.0], np.cumsum(rw_shocks)))
+        gbm = np.empty(self.steps + 1)
+        mean_reversion = np.empty(self.steps + 1)
+        gbm[0] = mean_reversion[0] = self.S0
+        for i in range(self.steps):
+            gbm[i + 1] = gbm[i] + self.mu_gbm * gbm[i] * self.dt + self.sigma_gbm * gbm[i] * gbm_dW[i]
+            mean_reversion[i + 1] = (mean_reversion[i] + self.kappa_mr * (self.mu_mr - mean_reversion[i]) * self.dt
+                                     + self.sigma_mr * mr_dW[i])
+        return {'random_walk': random_walk, 'gbm': gbm, 'mean_reversion': mean_reversion}
 
-        for i in range(1, n_steps):
-            Z = np.random.normal(size=1)
-            dW = Z * np.sqrt(self.dt)
-            dS = self.mu_gbm * simulations[i - 1] * self.dt + self.sigma_gbm * simulations[i - 1] * dW
-            simulations[i] = simulations[i - 1] + dS
-        return simulations
-
-    def _simulate_mean_reversion(self):
-        n_steps = self.steps
-        simulations = np.zeros(n_steps)
-        simulations[0] = self.S0
-
-        for t in range(1, n_steps):
-            Z = np.random.normal(size=1)
-            dW = Z * np.sqrt(self.dt)
-            dS = self.kappa_mr * (self.mu_mr - simulations[t - 1]) * self.dt + self.sigma_mr * dW
-            simulations[t] = simulations[t - 1] + dS
-        return simulations
+    def final_values(self):
+        return {name: float(path[-1]) for name, path in self.paths.items()}
 
     def generate_plot(self):
-        time_grid = np.linspace(0, self.T, self.steps)
-        rw_path = self._simulate_random_walk()
-        gbm_path = self._simulate_gbm()
-        mr_path = self._simulate_mean_reversion()
-
-        plt.figure(figsize=(12, 7))
-        plt.plot(time_grid, rw_path, label="Random Walk")
-        plt.plot(time_grid, gbm_path, label="Geometric Brownian Motion")
-        plt.plot(time_grid, mr_path, label="Mean Reversion")
-        
-        plt.title("Comparação de Modelos Estocásticos")
-        plt.xlabel("Tempo")
-        plt.ylabel("Valor")
-        plt.legend()
-        plt.grid(True)
-
-        buffer = io.BytesIO()
-        plt.savefig(buffer, format='png')
-        buffer.seek(0)
-        image_png = buffer.getvalue()
-        buffer.close()
-        
-        return base64.b64encode(image_png).decode('utf-8')
+        language = self.language
+        labels = {
+            'random_walk': 'Random Walk',
+            'gbm': t(language, 'Movimento Browniano Geométrico', 'Geometric Brownian Motion'),
+            'mean_reversion': t(language, 'Reversão à Média', 'Mean Reversion'),
+        }
+        time = time_grid(self.T, self.steps)
+        fig, ax = plt.subplots(figsize=(12, 7))
+        for name, path in self.paths.items():
+            ax.plot(time, path, label=labels[name])
+        ax.set_title(t(language, 'Comparação de modelos estocásticos', 'Stochastic models comparison'))
+        ax.set_xlabel(t(language, 'Tempo', 'Time'))
+        ax.set_ylabel(t(language, 'Valor', 'Value'))
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        return encode_figure(fig)

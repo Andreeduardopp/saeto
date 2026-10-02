@@ -1,0 +1,586 @@
+{% comment %}
+Shared form, results and simulation for the cash-flow volatility screens
+(Copeland & Antikarov, Herath & Park). Include with:
+    method: 'copeland' or 'herath'
+    model_type: the FinantialModelsChoices value the screen saves as
+{% endcomment %}
+<form id="cfVolatilityForm" novalidate>
+    {% csrf_token %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    {% if request.session.language == 'en' %}Project Parameters{% else %}Parâmetros do Projeto{% endif %}
+                </div>
+                <div class="card-body">
+                    <div class="form-group mb-3">
+                        <label for="initialInvestment">
+                            {% if request.session.language == 'en' %}Initial Investment (I₀):{% else %}Investimento Inicial (I₀):{% endif %}
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">R$</span>
+                            <input type="number" id="initialInvestment" class="form-control" min="0" value="{{ initial_data.initialInvestment }}" required>
+                        </div>
+                        <small class="form-text text-muted">
+                            {% if request.session.language == 'en' %}Used only in the NPV and in the Markowitz and VaR approaches.{% else %}Usado apenas no VPL e nas abordagens de Markowitz e VaR.{% endif %}
+                        </small>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="discountRate">
+                            {% if request.session.language == 'en' %}Discount Rate (MARR):{% else %}Taxa de Desconto (TMA):{% endif %}
+                        </label>
+                        <div class="input-group">
+                            <input type="number" id="discountRate" class="form-control" min="0.01" max="100" step="0.01" value="{{ initial_data.discountRate }}" required>
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="numPeriods">
+                            {% if request.session.language == 'en' %}Number of Periods:{% else %}Número de Períodos:{% endif %}
+                        </label>
+                        <input type="number" id="numPeriods" class="form-control" min="1" max="20" step="1" value="{{ initial_data.numPeriods }}" required>
+                    </div>
+
+                    <button type="button" class="btn btn-primary" id="generateTableButton">
+                        {% if request.session.language == 'en' %}Generate Cash Flow Inputs{% else %}Gerar Entradas de Fluxo de Caixa{% endif %}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    {% if request.session.language == 'en' %}Simulation Parameters{% else %}Parâmetros de Simulação{% endif %}
+                </div>
+                <div class="card-body">
+                    <div class="form-group mb-3">
+                        <label for="numSimulations">
+                            {% if request.session.language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
+                        </label>
+                        <input type="number" id="numSimulations" class="form-control" min="100" max="10000" step="1" value="{{ initial_data.numSimulations }}" required>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="uncertaintyPercent">
+                            {% if request.session.language == 'en' %}Uncertainty (Standard Deviation %):{% else %}Incerteza (Desvio Padrão %):{% endif %}
+                        </label>
+                        <div class="input-group">
+                            <input type="number" id="uncertaintyPercent" class="form-control" min="1" max="100" step="1" value="{{ initial_data.uncertaintyPercent }}" required>
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <small class="form-text text-muted">
+                            {% if request.session.language == 'en' %}"Generate Cash Flow Inputs" fills each standard deviation with this percentage of the expected cash flow; you can edit them afterwards.{% else %}"Gerar Entradas de Fluxo de Caixa" preenche cada desvio padrão com este percentual do fluxo esperado; depois você pode editá-los.{% endif %}
+                        </small>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="seed">
+                            {% if request.session.language == 'en' %}Seed (optional):{% else %}Semente (opcional):{% endif %}
+                        </label>
+                        <input type="number" id="seed" class="form-control" min="0" max="4294967295" step="1" value="{{ initial_data.seed }}">
+                        <small class="form-text text-muted">
+                            {% if request.session.language == 'en' %}Leave empty for new random draws. The same seed repeats the same simulation.{% else %}Deixe vazio para sorteios novos. A mesma semente repete a mesma simulação.{% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            {% if request.session.language == 'en' %}Expected Cash Flows{% else %}Fluxos de Caixa Esperados{% endif %}
+        </div>
+        <div class="card-body">
+            <p class="mb-3">
+                {% if request.session.language == 'en' %}
+                Enter the expected cash flow for each period. These values will be used as means for the Monte Carlo simulation.
+                {% else %}
+                Insira o fluxo de caixa esperado para cada período. Esses valores serão usados como médias para a simulação de Monte Carlo.
+                {% endif %}
+            </p>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="cashFlowTable">
+                    <thead>
+                        <tr>
+                            <th>{% if request.session.language == 'en' %}Period{% else %}Período{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Expected Cash Flow{% else %}Fluxo de Caixa Esperado{% endif %}</th>
+                            <th>{% if request.session.language == 'en' %}Standard Deviation{% else %}Desvio Padrão{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div id="cfVolatilityError" class="alert alert-danger" style="display: none;"></div>
+            <button type="submit" class="btn btn-success">
+                {% if request.session.language == 'en' %}Run Simulation{% else %}Executar Simulação{% endif %}
+            </button>
+        </div>
+    </div>
+</form>
+
+<div id="resultsContainer" class="card mb-4" style="display: none;">
+    <div class="card-header">
+        {% if request.session.language == 'en' %}Simulation Results{% else %}Resultados da Simulação{% endif %}
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        {% if request.session.language == 'en' %}Volatility Estimate{% else %}Estimativa de Volatilidade{% endif %}
+                    </div>
+                    <div class="card-body text-center">
+                        <h3 id="volatilityResult">-</h3>
+                        <small class="text-muted">
+                            {% if request.session.language == 'en' %}Seed used:{% else %}Semente usada:{% endif %} <span id="usedSeed">-</span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        {% if request.session.language == 'en' %}Statistics{% else %}Estatísticas{% endif %}
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tbody>
+                                {% if method == 'copeland' %}
+                                <tr>
+                                    <td>{% if request.session.language == 'en' %}V₀ (PV of the expected cash flows):{% else %}V₀ (VP dos fluxos esperados):{% endif %}</td>
+                                    <td id="v0">-</td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <td>{% if request.session.language == 'en' %}Mean of z:{% else %}Média de z:{% endif %}</td>
+                                    <td id="meanZ">-</td>
+                                </tr>
+                                <tr>
+                                    <td>{% if request.session.language == 'en' %}Standard Deviation of z:{% else %}Desvio Padrão de z:{% endif %}</td>
+                                    <td id="stdZ">-</td>
+                                </tr>
+                                <tr>
+                                    <td>{% if request.session.language == 'en' %}Min Value:{% else %}Valor Mínimo:{% endif %}</td>
+                                    <td id="minZ">-</td>
+                                </tr>
+                                <tr>
+                                    <td>{% if request.session.language == 'en' %}Max Value:{% else %}Valor Máximo:{% endif %}</td>
+                                    <td id="maxZ">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                {% if request.session.language == 'en' %}Comparative Statistics{% else %}Estatísticas Comparativas{% endif %}
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>{% if request.session.language == 'en' %}STATISTICS{% else %}ESTATÍSTICAS{% endif %}</th>
+                                <th>{% if request.session.language == 'en' %}RESULTS{% else %}RESULTADOS{% endif %}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Average NPV{% else %}VPL médio{% endif %}</td>
+                                <td id="avgNPV">-</td>
+                            </tr>
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Standard Deviation of NPV{% else %}Desvio-padrão do VPL{% endif %}</td>
+                                <td id="stdDevNPV">-</td>
+                            </tr>
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Markowitz Expectancy-Variance: NPV Coefficient of Variation (σ){% else %}Esperança-Variância de Markowitz: Coeficiente de variação do VPL (σ){% endif %}</td>
+                                <td id="markowitzCV">-</td>
+                            </tr>
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Value-at-Risk Approach - VAR(5%) (σ){% else %}Abordagem pelo Value-at-Risk - VAR(5%) (σ){% endif %}</td>
+                                <td id="varApproach">-</td>
+                            </tr>
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Cash Flow Log-Return (σ){% else %}Log-Retorno do Fluxo de Caixa (σ){% endif %}</td>
+                                <td id="logCfReturn">-</td>
+                            </tr>
+                            {% if method == 'herath' %}
+                            <tr>
+                                <td>{% if request.session.language == 'en' %}Copeland & Antikarov Approach (σ){% else %}Abordagem de Copeland & Antikarov (σ){% endif %}</td>
+                                <td id="copelandAntikarovVolatility">-</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <h5>{% if request.session.language == 'en' %}Histogram of z Values{% else %}Histograma dos Valores de z{% endif %}</h5>
+            <div style="height: 300px;"><canvas id="histogramChart"></canvas></div>
+        </div>
+
+        <div class="text-center">
+            <button type="button" class="btn btn-primary" id="runAgainButton">
+                {% if request.session.language == 'en' %}Run Again{% else %}Executar Novamente{% endif %}
+            </button>
+            <button type="button" class="btn btn-secondary" id="resetButton">
+                {% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}
+            </button>
+            <button type="button" class="btn btn-success" id="saveProjectButton" disabled>
+                {% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
+            </button>
+        </div>
+    </div>
+</div>
+
+{{ initial_data|json_script:"cfVolatilityInitialData" }}
+<script>
+(function () {
+    const METHOD = '{{ method }}';  // 'copeland' or 'herath'
+    const MIN_PERIODS = 1, MAX_PERIODS = 20;
+    const MIN_SIMULATIONS = 100, MAX_SIMULATIONS = 10000;
+    const T = {
+        pt: {
+            invalidInvestment: 'O investimento inicial deve ser zero ou maior.',
+            invalidRate: 'A taxa de desconto deve estar entre 0,01% e 100%.',
+            invalidPeriods: `O número de períodos deve ser um número inteiro entre ${MIN_PERIODS} e ${MAX_PERIODS}.`,
+            periodsChanged: 'O número de períodos não corresponde à tabela. Clique em "Gerar Entradas de Fluxo de Caixa".',
+            invalidSimulations: `O número de simulações deve ser um número inteiro entre ${MIN_SIMULATIONS} e ${MAX_SIMULATIONS}.`,
+            invalidUncertainty: 'A incerteza deve estar entre 1% e 100%.',
+            invalidSeed: 'A semente deve ser um número inteiro entre 0 e 4294967295, ou ficar vazia.',
+            missingCashFlow: 'Preencha o fluxo esperado e o desvio padrão de todos os períodos.',
+            negativeStdDev: 'Os desvios padrão não podem ser negativos.',
+            firstCashFlow: 'O fluxo esperado do período 1 deve ser maior que zero (o log-retorno do fluxo usa ln(FC₁ / E[FC₁])).',
+            nonPositiveV0: 'O valor presente dos fluxos esperados (V₀) deve ser maior que zero.',
+            nonPositiveDraw: 'Em alguma simulação V₀, V₁ ou FC₁ ficou menor ou igual a zero, e ln() não é definido. Reduza os desvios padrão.',
+            notAvailable: 'N/D (VPL médio ≤ 0)',
+            frequency: 'Frequência',
+            zValue: 'Valor de z',
+            chartTitle: 'Distribuição de z = ln(V₁/V₀)',
+        },
+        en: {
+            invalidInvestment: 'The initial investment must be zero or greater.',
+            invalidRate: 'The discount rate must be between 0.01% and 100%.',
+            invalidPeriods: `The number of periods must be a whole number between ${MIN_PERIODS} and ${MAX_PERIODS}.`,
+            periodsChanged: 'The number of periods does not match the table. Click "Generate Cash Flow Inputs".',
+            invalidSimulations: `The number of simulations must be a whole number between ${MIN_SIMULATIONS} and ${MAX_SIMULATIONS}.`,
+            invalidUncertainty: 'The uncertainty must be between 1% and 100%.',
+            invalidSeed: 'The seed must be a whole number between 0 and 4294967295, or be left empty.',
+            missingCashFlow: 'Fill in the expected cash flow and the standard deviation of every period.',
+            negativeStdDev: 'Standard deviations cannot be negative.',
+            firstCashFlow: 'The expected cash flow of period 1 must be greater than zero (the cash flow log-return uses ln(CF₁ / E[CF₁])).',
+            nonPositiveV0: 'The present value of the expected cash flows (V₀) must be greater than zero.',
+            nonPositiveDraw: 'In some simulation V₀, V₁ or CF₁ was zero or less, where ln() is undefined. Lower the standard deviations.',
+            notAvailable: 'N/A (mean NPV ≤ 0)',
+            frequency: 'Frequency',
+            zValue: 'z value',
+            chartTitle: 'Distribution of z = ln(V₁/V₀)',
+        },
+    };
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const t = T[lang] || T.pt;
+    const locale = lang === 'en' ? 'en-US' : 'pt-BR';
+    const initialData = JSON.parse(document.getElementById('cfVolatilityInitialData').textContent);
+
+    const form = document.getElementById('cfVolatilityForm');
+    const periodsInput = document.getElementById('numPeriods');
+    const uncertaintyInput = document.getElementById('uncertaintyPercent');
+    const seedInput = document.getElementById('seed');
+    const tableBody = document.getElementById('cashFlowTable').querySelector('tbody');
+    const errorBox = document.getElementById('cfVolatilityError');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const saveBtn = document.getElementById('saveProjectButton');
+
+    let histogram = null;
+    // Inputs and results of the last successful simulation; Save sends exactly this.
+    let lastRun = null;
+
+    const setLastRun = (run) => {
+        lastRun = run;
+        saveBtn.disabled = !run;
+    };
+
+    const showError = (message) => {
+        errorBox.textContent = message;
+        errorBox.style.display = message ? 'block' : 'none';
+    };
+
+    const money = (value) => value.toLocaleString(locale, { style: 'currency', currency: 'BRL' });
+    const fixed = (value, decimals) => value.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    const percent = (fraction) => fraction === null ? t.notAvailable : fixed(fraction * 100, 2) + '%';
+
+    function hideResults() {
+        setLastRun(null);
+        resultsContainer.style.display = 'none';
+    }
+
+    // --- Cash flow table --------------------------------------------------
+
+    function readRows() {
+        return Array.from(tableBody.querySelectorAll('tr')).map(row => ({
+            cashFlow: row.querySelector('.cash-flow').value,
+            stdDev: row.querySelector('.std-dev').value,
+        }));
+    }
+
+    function buildTable(cashFlows, stdDevs) {
+        tableBody.innerHTML = '';
+        cashFlows.forEach((cashFlow, i) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${i + 1}</td>
+                <td><div class="input-group"><span class="input-group-text">R$</span>
+                    <input type="number" class="form-control cash-flow" id="cf_${i + 1}"></div></td>
+                <td><div class="input-group"><span class="input-group-text">R$</span>
+                    <input type="number" class="form-control std-dev" id="sd_${i + 1}" min="0"></div></td>`;
+            row.querySelector('.cash-flow').value = cashFlow;
+            row.querySelector('.std-dev').value = stdDevs[i];
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Keeps the cash flows already typed; every standard deviation becomes
+    // uncertainty × expected cash flow.
+    function generateTable() {
+        const count = Number(periodsInput.value);
+        if (!Number.isInteger(count) || count < MIN_PERIODS || count > MAX_PERIODS) {
+            showError(t.invalidPeriods);
+            return;
+        }
+        const uncertainty = parseFloat(uncertaintyInput.value);
+        if (!(uncertainty >= 1 && uncertainty <= 100)) {
+            showError(t.invalidUncertainty);
+            return;
+        }
+        showError('');
+        hideResults();
+        const typed = readRows();
+        const cashFlows = [];
+        for (let i = 0; i < count; i++) {
+            const value = typed[i] ? parseFloat(typed[i].cashFlow) : NaN;
+            cashFlows.push(Number.isFinite(value) ? value : 100000 + 25000 * (i + 1));
+        }
+        buildTable(cashFlows, cashFlows.map(cf => Math.round(Math.abs(cf) * uncertainty) / 100));
+    }
+
+    // --- Inputs -------------------------------------------------------------
+
+    function readParameters() {
+        const number = (id) => parseFloat(document.getElementById(id).value);
+        const p = {
+            initialInvestment: number('initialInvestment'),
+            discountRate: number('discountRate'),
+            numPeriods: Number(periodsInput.value),
+            numSimulations: Number(document.getElementById('numSimulations').value),
+            uncertaintyPercent: number('uncertaintyPercent'),
+        };
+        if (!(p.initialInvestment >= 0)) return { error: t.invalidInvestment };
+        if (!(p.discountRate >= 0.01 && p.discountRate <= 100)) return { error: t.invalidRate };
+        if (!Number.isInteger(p.numPeriods) || p.numPeriods < MIN_PERIODS || p.numPeriods > MAX_PERIODS) return { error: t.invalidPeriods };
+        if (!Number.isInteger(p.numSimulations) || p.numSimulations < MIN_SIMULATIONS || p.numSimulations > MAX_SIMULATIONS) return { error: t.invalidSimulations };
+        if (!(p.uncertaintyPercent >= 1 && p.uncertaintyPercent <= 100)) return { error: t.invalidUncertainty };
+
+        const rows = readRows();
+        if (rows.length !== p.numPeriods) return { error: t.periodsChanged };
+        p.cash_flows = rows.map(row => parseFloat(row.cashFlow));
+        p.std_devs = rows.map(row => parseFloat(row.stdDev));
+        if (![...p.cash_flows, ...p.std_devs].every(Number.isFinite)) return { error: t.missingCashFlow };
+        if (p.std_devs.some(sd => sd < 0)) return { error: t.negativeStdDev };
+        if (!(p.cash_flows[0] > 0)) return { error: t.firstCashFlow };
+
+        // Empty seed: draw a new one. The seed actually used is what gets saved.
+        const seedText = seedInput.value.trim();
+        if (seedText === '') {
+            p.seed = saetoRandom.newSeed();
+        } else {
+            p.seed = Number(seedText);
+            if (!Number.isInteger(p.seed) || p.seed < 0 || p.seed > saetoRandom.MAX_SEED) return { error: t.invalidSeed };
+        }
+        return { parameters: p };
+    }
+
+    // --- Simulation ---------------------------------------------------------
+
+    const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
+    const sampleStd = (values) => {
+        const m = mean(values);
+        return Math.sqrt(values.reduce((sum, v) => sum + (v - m) ** 2, 0) / (values.length - 1));
+    };
+
+    // z = ln(V₁/V₀) with V₁ = CF₁ + PV₁ (PV₁: the remaining cash flows at date 1).
+    // Copeland & Antikarov: V₀ is the PV of the expected cash flows, fixed.
+    // Herath & Park: V₀ is the PV of a second, independent draw of the cash flows.
+    function simulate(p) {
+        const k = p.discountRate / 100;
+        const rng = saetoRandom(p.seed);
+        const presentValue = (cashFlows) => cashFlows.reduce((sum, cf, i) => sum + cf / Math.pow(1 + k, i + 1), 0);
+        const draw = () => p.cash_flows.map((m, i) => m + p.std_devs[i] * rng.normal());
+
+        const v0Expected = presentValue(p.cash_flows);
+        if (!(v0Expected > 0)) return { error: t.nonPositiveV0 };
+
+        const zValues = [], zCopeland = [], npvValues = [], cfLogReturns = [];
+        for (let sim = 0; sim < p.numSimulations; sim++) {
+            const cashFlows = draw();
+            let v1 = cashFlows[0];
+            for (let i = 1; i < cashFlows.length; i++) v1 += cashFlows[i] / Math.pow(1 + k, i);
+            const v0 = METHOD === 'herath' ? presentValue(draw()) : v0Expected;
+            if (!(v1 > 0 && v0 > 0 && cashFlows[0] > 0)) return { error: t.nonPositiveDraw };
+
+            zValues.push(Math.log(v1 / v0));
+            if (METHOD === 'herath') zCopeland.push(Math.log(v1 / v0Expected));
+            npvValues.push(presentValue(cashFlows) - p.initialInvestment);
+            cfLogReturns.push(Math.log(cashFlows[0] / p.cash_flows[0]));
+        }
+
+        const meanNpv = mean(npvValues);
+        const stdNpv = sampleStd(npvValues);
+        const sortedNpv = npvValues.slice().sort((a, b) => a - b);
+        const var5 = sortedNpv[Math.floor(sortedNpv.length * 0.05)];
+        const stdZ = sampleStd(zValues);
+        const results = {
+            volatility: stdZ,
+            mean_z: mean(zValues),
+            std_z: stdZ,
+            min_z: Math.min(...zValues),
+            max_z: Math.max(...zValues),
+            v0: v0Expected,
+            mean_npv: meanNpv,
+            std_npv: stdNpv,
+            // Both approaches divide by the mean NPV, which makes no sense when it is ≤ 0.
+            markowitz_cv: meanNpv > 0 ? stdNpv / meanNpv : null,
+            var_5: var5,
+            var_volatility: meanNpv > 0 ? (meanNpv - var5) / (1.6449 * meanNpv) : null,
+            log_cf_volatility: sampleStd(cfLogReturns),
+        };
+        if (METHOD === 'herath') results.ca_volatility = sampleStd(zCopeland);
+        return { results, zValues };
+    }
+
+    // --- Output -------------------------------------------------------------
+
+    function drawHistogram(zValues, numBins = 20) {
+        const min = Math.min(...zValues);
+        const max = Math.max(...zValues);
+        const binWidth = (max - min) / numBins || 1;
+        const bins = Array(numBins).fill(0);
+        zValues.forEach(value => {
+            bins[Math.min(Math.floor((value - min) / binWidth), numBins - 1)]++;
+        });
+
+        if (histogram) histogram.destroy();
+        histogram = new Chart(document.getElementById('histogramChart'), {
+            type: 'bar',
+            data: {
+                labels: bins.map((_, i) => fixed(min + i * binWidth, 3)),
+                datasets: [{
+                    label: t.frequency,
+                    data: bins,
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: t.frequency } },
+                    x: { title: { display: true, text: t.zValue } },
+                },
+                plugins: { title: { display: true, text: t.chartTitle } },
+            },
+        });
+    }
+
+    function showResults(parameters, results, zValues) {
+        const set = (id, text) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = text;
+        };
+        set('volatilityResult', percent(results.volatility));
+        set('usedSeed', parameters.seed);
+        set('v0', money(results.v0));
+        set('meanZ', fixed(results.mean_z, 4));
+        set('stdZ', fixed(results.std_z, 4));
+        set('minZ', fixed(results.min_z, 4));
+        set('maxZ', fixed(results.max_z, 4));
+        set('avgNPV', money(results.mean_npv));
+        set('stdDevNPV', money(results.std_npv));
+        set('markowitzCV', percent(results.markowitz_cv));
+        set('varApproach', percent(results.var_volatility));
+        set('logCfReturn', percent(results.log_cf_volatility));
+        if (METHOD === 'herath') set('copelandAntikarovVolatility', percent(results.ca_volatility));
+        resultsContainer.style.display = 'block';
+        drawHistogram(zValues);
+    }
+
+    function runSimulation() {
+        hideResults();
+        const { parameters, error } = readParameters();
+        if (error) {
+            showError(error);
+            return;
+        }
+        const outcome = simulate(parameters);
+        if (outcome.error) {
+            showError(outcome.error);
+            return;
+        }
+        showError('');
+        showResults(parameters, outcome.results, outcome.zValues);
+        setLastRun({ parameters, results: outcome.results });
+    }
+
+    // Back to the loaded values: the defaults, or the saved run on rerun.
+    function resetToInitial() {
+        form.reset();
+        showError('');
+        hideResults();
+        const cashFlows = Array.isArray(initialData.cash_flows) ? initialData.cash_flows : [];
+        const stdDevs = Array.isArray(initialData.std_devs) ? initialData.std_devs : [];
+        periodsInput.value = cashFlows.length || initialData.numPeriods;
+        buildTable(cashFlows, stdDevs);
+    }
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        runSimulation();
+    });
+    // Enter in the periods field rebuilds the table instead of simulating.
+    periodsInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            generateTable();
+        }
+    });
+    document.getElementById('generateTableButton').addEventListener('click', generateTable);
+    document.getElementById('runAgainButton').addEventListener('click', runSimulation);
+    document.getElementById('resetButton').addEventListener('click', resetToInitial);
+
+    saveBtn.addEventListener('click', () => {
+        if (!lastRun || !histogram) return;
+        saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: '{{ model_type }}',
+            parameters: lastRun.parameters,
+            results: { ...lastRun.results, chart: histogram.toBase64Image() },
+            lang: lang,
+        });
+    });
+
+    resetToInitial();
+})();
+</script>

@@ -2,429 +2,234 @@
     {% if request.session.language == 'en' %}
     <h1>Markov chain</h1>
     <p>
-        Enter the number of states, the state names, the transition matrix probabilities, the initial percentages and the number of iterations
-        to simulate the Markov chain.
+        Enter the states, the transition matrix (the chance, in %, of going from the row state to the column state; each row adds up to 100%),
+        the initial percentages and the number of iterations. The distribution evolves as πₙ₊₁ = πₙ · P.
     </p>
     {% else %}
     <h1>Cadeia de Markov</h1>
     <p>
-        Introduza o número de estados, os nomes dos estados, as probabilidades da matriz de transição, as percentagens iniciais e o número de iterações
-        para simular a cadeia de Markov.
+        Informe os estados, a matriz de transição (a chance, em %, de ir do estado da linha para o estado da coluna; cada linha soma 100%),
+        as porcentagens iniciais e o número de iterações. A distribuição evolui como πₙ₊₁ = πₙ · P.
     </p>
     {% endif %}
 
-    <form id="markovForm" method="post" action="{% url 'simulate_markov' %}">
+    <form id="markovForm" novalidate>
         {% csrf_token %}
-        
-        <!-- Number of States -->
-        <div class="form-group">
-            <label for="num_states">
-                {% if request.session.language == 'en' %}Number of states{% else %}Número de estados:{% endif %}
-            </label>
-            <input type="number" class="form-control" id="num_states" name="num_states" required>
-        </div>
-        
-        <!-- State Names -->
-        <div class="form-group">
-            <label for="states">           
-                {% if request.session.language == 'en' %}Name of the states (separated by a comma):{% else %}Nome dos estados (separados por virgula):{% endif %}
-            </label>
-            <input type="text" class="form-control" id="states" name="states" placeholder="E.g., A, B, C" required>
+        <div class="row">
+            <div class="col-md-4 form-group mb-3">
+                <label for="num_states">{% if request.session.language == 'en' %}Number of states (2 to 10):{% else %}Número de estados (2 a 10):{% endif %}</label>
+                <input type="number" class="form-control" id="num_states" name="num_states" min="2" max="10" step="1" value="{{ initial_data.num_states }}" required>
+            </div>
+            <div class="col-md-5 form-group mb-3">
+                <label for="states">{% if request.session.language == 'en' %}Names of the states (separated by commas):{% else %}Nomes dos estados (separados por vírgula):{% endif %}</label>
+                <input type="text" class="form-control" id="states" name="states" value="{{ initial_data.states|join:', ' }}" required>
+            </div>
+            <div class="col-md-3 form-group mb-3">
+                <label for="iterations">{% if request.session.language == 'en' %}Iterations (1 to 50):{% else %}Iterações (1 a 50):{% endif %}</label>
+                <input type="number" class="form-control" id="iterations" name="iterations" min="1" max="50" step="1" value="{{ initial_data.iterations }}" required>
+            </div>
         </div>
 
-        <!-- Transition Matrix -->
-        <div class="form-group grid gap-6">
-            <label >
-                {% if request.session.language == 'en' %}Transition matrix: Chance (%) of going from one state to the other{% else %}Matriz de transição: Probabilidade (%) de mudar de estado{% endif %}
-            </label>
-            <div id="transition_matrix_container"></div>
-        </div>
-        
-        <!-- Initial Percentages -->
-        <div class="form-group">
-            <label>
-                {% if request.session.language == 'en' %} Initial percentages for each state:{% else %}Porcentagens Iniciais para cada estado:{% endif %}
-            </label>
-            <div id="initial_percentages_container"></div>
+        <label class="form-label">{% if request.session.language == 'en' %}Transition matrix (%): from (row) → to (column){% else %}Matriz de transição (%): de (linha) → para (coluna){% endif %}</label>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle" id="transitionMatrix"></table>
         </div>
 
-        <!-- Number of Iterations -->
-        <div class="form-group">
-            <label for="iterations">
-                {% if request.session.language == 'en' %}Number of iterations:{% else %}Número de iterações:{% endif %}
-            </label>
-            <input type="number" class="form-control" id="iterations" name="iterations" required>
+        <label class="form-label">{% if request.session.language == 'en' %}Initial percentages (%):{% else %}Porcentagens iniciais (%):{% endif %}</label>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle" id="initialPercentages"></table>
         </div>
 
-        <button type="button" class="btn btn-primary mt-3" onclick="submitMarkovForm()">Simulate</button>
+        <div id="screenError" class="alert alert-danger mt-3" style="display: none;"></div>
+        <div class="mt-3 mb-4">
+            <button type="submit" id="runButton" class="btn btn-primary">{% if request.session.language == 'en' %}Simulate{% else %}Simular{% endif %}</button>
+            <button type="button" id="resetButton" class="btn btn-secondary">{% if request.session.language == 'en' %}Reset{% else %}Reiniciar{% endif %}</button>
+            <button type="button" id="saveProjectButton" class="btn btn-success" disabled>{% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}</button>
+        </div>
     </form>
+
+    <div id="resultsContainer" style="display: none;">
+        <h3>{% if request.session.language == 'en' %}Evolution of the probabilities{% else %}Evolução das probabilidades{% endif %}</h3>
+        <img id="markovPlot" class="img-fluid" alt="{% if request.session.language == 'en' %}Markov chain evolution{% else %}Evolução da cadeia de Markov{% endif %}">
+        <div class="table-responsive mt-3">
+            <table class="table table-bordered table-striped table-sm" id="evolutionTable"></table>
+        </div>
+    </div>
 </div>
 
+{{ initial_data|json_script:"markovInitialData" }}
 <script>
-    document.getElementById('num_states').addEventListener('input', function() {
-        let numStates = parseInt(this.value);
-        if (numStates > 10) {
-            this.value = 10;
-            numStates = this.value
+(function () {
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const screen = window.saetoServerScreen;
+    const T = lang === 'en'
+        ? { fromTo: 'From \\ To', total: 'Total', iteration: 'Iteration', state: 'State' }
+        : { fromTo: 'De \\ Para', total: 'Total', iteration: 'Iteração', state: 'Estado' };
+    const initialData = JSON.parse(document.getElementById('markovInitialData').textContent);
+
+    const form = document.getElementById('markovForm');
+    const countInput = document.getElementById('num_states');
+    const namesInput = document.getElementById('states');
+    const matrixTable = document.getElementById('transitionMatrix');
+    const initialTable = document.getElementById('initialPercentages');
+
+    const stateCount = () => {
+        const count = Number(countInput.value);
+        return Number.isInteger(count) && count >= 2 && count <= 10 ? count : null;
+    };
+    const stateNames = () => namesInput.value.split(',').map(name => name.trim());
+    const cell = (tag, text) => {
+        const element = document.createElement(tag);
+        if (text !== undefined) element.textContent = text;
+        return element;
+    };
+    const percentInput = (name, value) => {
+        const input = document.createElement('input');
+        Object.assign(input, { type: 'number', name, min: 0, max: 100, step: 'any', className: 'form-control form-control-sm' });
+        input.value = value ?? '';
+        input.defaultValue = input.value;
+        return input;
+    };
+    const currentValue = (name) => {
+        const input = form.elements[name];
+        return input ? input.value : undefined;
+    };
+
+    // Row sums shown next to each row, green when they add up to 100%.
+    function updateTotals() {
+        const count = stateCount();
+        if (!count) return;
+        const total = (names) => names.reduce((sum, name) => sum + (parseFloat(currentValue(name)) || 0), 0);
+        const show = (element, value) => {
+            element.textContent = `${screen.formatNumber(value, lang, 2)}%`;
+            element.className = Math.abs(value - 100) <= 0.01 ? 'text-success fw-bold' : 'text-danger fw-bold';
+        };
+        for (let i = 0; i < count; i++) {
+            show(document.getElementById(`rowTotal${i}`),
+                 total(Array.from({ length: count }, (_, j) => `transition_matrix[${i}][${j}]`)));
         }
-        const statesInput = document.getElementById('states').value;
-        const states = statesInput ? statesInput.split(',') : Array.from({ length: numStates }, (_, i) => `State ${i + 1}`);
+        show(document.getElementById('initialTotal'),
+             total(Array.from({ length: count }, (_, i) => `initial_percentages[${i}]`)));
+    }
 
-        generateTransitionMatrix(numStates, states);
+    // Rebuilds both tables; values already in the inputs are kept, else taken from `values`.
+    function buildTables(values = {}) {
+        const count = stateCount();
+        if (!count) return;
+        const names = stateNames();
+        const label = (i) => names[i] || `E${i + 1}`;
+        // Read what is typed before the tables are cleared.
+        const typed = {};
+        form.querySelectorAll('#transitionMatrix input, #initialPercentages input').forEach(input => { typed[input.name] = input.value; });
+        const value = (name, fallback) => typed[name] ?? fallback;
 
-        generateInitialPercentages(numStates, states);
+        matrixTable.innerHTML = '';
+        const head = cell('tr');
+        head.appendChild(cell('th', T.fromTo));
+        for (let j = 0; j < count; j++) head.appendChild(cell('th', label(j)));
+        head.appendChild(cell('th', T.total));
+        matrixTable.appendChild(head);
+        for (let i = 0; i < count; i++) {
+            const row = cell('tr');
+            row.appendChild(cell('th', label(i)));
+            for (let j = 0; j < count; j++) {
+                const name = `transition_matrix[${i}][${j}]`;
+                const td = cell('td');
+                td.appendChild(percentInput(name, value(name, values.matrix?.[i]?.[j])));
+                row.appendChild(td);
+            }
+            const total = cell('td');
+            total.id = `rowTotal${i}`;
+            row.appendChild(total);
+            matrixTable.appendChild(row);
+        }
+
+        const values0 = Array.from({ length: count }, (_, i) => value(`initial_percentages[${i}]`, values.initial?.[i]));
+        initialTable.innerHTML = '';
+        const namesRow = cell('tr');
+        const inputsRow = cell('tr');
+        for (let i = 0; i < count; i++) {
+            namesRow.appendChild(cell('th', label(i)));
+            const td = cell('td');
+            td.appendChild(percentInput(`initial_percentages[${i}]`, values0[i]));
+            inputsRow.appendChild(td);
+        }
+        namesRow.appendChild(cell('th', T.total));
+        const total = cell('td');
+        total.id = 'initialTotal';
+        inputsRow.appendChild(total);
+        initialTable.append(namesRow, inputsRow);
+        updateTotals();
+    }
+
+    // Changing the number of states trims or extends the list of names.
+    countInput.addEventListener('input', () => {
+        const count = stateCount();
+        if (!count) return;
+        const names = stateNames().filter(Boolean).slice(0, count);
+        while (names.length < count) names.push(`E${names.length + 1}`);
+        namesInput.value = names.join(', ');
+        buildTables();
+    });
+    namesInput.addEventListener('input', () => buildTables());
+    form.addEventListener('input', (event) => {
+        if (event.target.name && event.target.name !== 'states' && event.target.name !== 'num_states') updateTotals();
     });
 
-    // Update matrix and percentages labels when states are entered/updated
-    document.getElementById('states').addEventListener('input', function() {
-        document.getElementById('num_states').dispatchEvent(new Event('input'));
+    function loadInitial() {
+        matrixTable.innerHTML = '';
+        initialTable.innerHTML = '';
+        buildTables({ matrix: initialData.transition_matrix, initial: initialData.initial_percentages });
+    }
+
+    function readParameters() {
+        const count = stateCount() || 0;
+        const number = (name) => Number(currentValue(name));
+        return {
+            num_states: Number(countInput.value),
+            states: stateNames(),
+            transition_matrix: Array.from({ length: count }, (_, i) =>
+                Array.from({ length: count }, (_, j) => number(`transition_matrix[${i}][${j}]`))),
+            initial_percentages: Array.from({ length: count }, (_, i) => number(`initial_percentages[${i}]`)),
+            iterations: Number(document.getElementById('iterations').value),
+        };
+    }
+
+    function showEvolution(evolution, states) {
+        const table = document.getElementById('evolutionTable');
+        table.innerHTML = '';
+        const head = cell('tr');
+        [T.iteration, ...states].forEach(text => head.appendChild(cell('th', text)));
+        table.appendChild(head);
+        evolution.forEach((vector, iteration) => {
+            const row = cell('tr');
+            row.appendChild(cell('td', iteration));
+            vector.forEach(p => row.appendChild(cell('td', `${screen.formatNumber(p * 100, lang, 2)}%`)));
+            table.appendChild(row);
+        });
+    }
+
+    screen({
+        form,
+        url: '{% url "simulate_markov" %}',
+        saveUrl: '{% url "save_financial_model" %}',
+        modelType: 'MARKOV_CHAIN',
+        lang,
+        resultsContainer: document.getElementById('resultsContainer'),
+        errorBox: document.getElementById('screenError'),
+        submitButton: document.getElementById('runButton'),
+        resetButton: document.getElementById('resetButton'),
+        saveButton: document.getElementById('saveProjectButton'),
+        readParameters,
+        render(data) {
+            const plot = screen.dataUri(data.plot);
+            document.getElementById('markovPlot').src = plot;
+            showEvolution(data.evolution, data.states);
+            return { evolution: data.evolution, plot };
+        },
+        onReset: loadInitial,
     });
 
-    // Function to generate transition matrix inputs with labels
-    function generateTransitionMatrix(numStates, states) {
-        const container = document.getElementById('transition_matrix_container');
-        container.innerHTML = ''; 
-    
-        if (!isNaN(numStates) && numStates > 0) {
-            for (let i = 0; i < numStates; i++) {
-                const row = document.createElement('div');
-                row.className = 'd-flex mb-2 align-items-center';
-    
-                for (let j = 0; j < numStates; j++) {
-                    // Create label for each transition
-                    const label = document.createElement('label');
-                    label.textContent = `${states[i]} → ${states[j]}`;
-                    label.className = 'mr-2 pt-2';
-                    label.style.minWidth = '100px';
-    
-                    // Create input for each transition probability
-                    const input = document.createElement('input');
-                    input.type = 'number';
-                    input.step = '1';
-                    input.min = '0';
-                    input.max = '100';
-                    input.className = 'form-control mr-4';
-                    input.name = `transition_matrix[${i}][${j}]`;
-                    input.placeholder = `P(${states[i]}→${states[j]})`;
-                    input.style.width = '180px';
-                    
-                    // Add event listener to enforce 0-1 range
-                    input.addEventListener('input', function() {
-                        if (this.value > 100) {
-                            this.value = 100;
-                        } else if (this.value < 0) {
-                            this.value = 0;
-                        }
-                    });
-    
-                    row.appendChild(label); 
-                    row.appendChild(input);
-                }
-    
-                container.appendChild(row);
-            }
-        }
-    }
-    
-    // Function to generate initial percentage inputs with labels
-    function generateInitialPercentages(numStates, states) {
-        const container = document.getElementById('initial_percentages_container');
-        container.innerHTML = ''; // Clear previous inputs
-    
-        if (!isNaN(numStates) && numStates > 0) {
-            for (let i = 0; i < numStates; i++) {
-                const row = document.createElement('div');
-                row.className = 'd-flex mb-2 align-items-center';
-    
-                // Create label for each state's initial percentage
-                const label = document.createElement('label');
-                label.textContent = `${states[i]}`;
-                label.className = 'mr-2';
-                label.style.minWidth = '100px';
-    
-                // Create input for each state's initial percentage
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.step = '1';
-                input.min = '0';
-                input.max = '100';
-                input.className = 'form-control';
-                input.name = `initial_percentages[${i}]`;
-                input.placeholder = `e.g., 50`;
-                input.style.width = '180px';
-                
-                // Add event listener to enforce 0-1 range
-                input.addEventListener('input', function() {
-                    if (this.value > 100) {
-                        this.value = 100;
-                    } else if (this.value < 0) {
-                        this.value = 0;
-                    }
-                });
-    
-                row.appendChild(label);
-                row.appendChild(input);
-                container.appendChild(row);
-            }
-        }
-    }
-    
-    // Function to validate all probability inputs before form submission
-    function validateProbabilityInputs() {
-        const transitionInputs = document.querySelectorAll('#transition_matrix_container input[type="number"]');
-        const initialPercentageInputs = document.querySelectorAll('#initial_percentages_container input[type="number"]');
-        
-        let isValid = true;
-        let invalidInputs = [];
-    
-        // Check transition matrix inputs
-        transitionInputs.forEach(input => {
-            const value = parseFloat(input.value);
-            if (isNaN(value) || value < 0 || value > 100) {
-                isValid = false;
-                invalidInputs.push(input);
-                input.classList.add('is-invalid');
-            } else {
-                input.classList.remove('is-invalid');
-            }
-        });
-    
-        // Check initial percentage inputs
-        initialPercentageInputs.forEach(input => {
-            const value = parseFloat(input.value);
-            if (isNaN(value) || value < 0 || value > 100) {
-                isValid = false;
-                invalidInputs.push(input);
-                input.classList.add('is-invalid');
-            } else {
-                input.classList.remove('is-invalid');
-            }
-        });
-    
-        // Validate row sums in transition matrix (each row should sum to 1)
-        const numStates = parseInt(document.getElementById('num_states').value);
-        if (!isNaN(numStates) && numStates > 0) {
-            for (let i = 0; i < numStates; i++) {
-                let rowSum = 0;
-                for (let j = 0; j < numStates; j++) {
-                    const inputName = `transition_matrix[${i}][${j}]`;
-                    const input = document.querySelector(`input[name="${inputName}"]`);
-                    rowSum += parseFloat(input.value) || 0;
-                }
-                
-                // Check if row sum is approximately 1 (allowing for small floating point errors)
-                if (Math.abs(rowSum - 100) > 0.01) {
-                    isValid = false;
-                    for (let j = 0; j < numStates; j++) {
-                        const inputName = `transition_matrix[${i}][${j}]`;
-                        const input = document.querySelector(`input[name="${inputName}"]`);
-                        input.classList.add('is-invalid');
-                        invalidInputs.push(input);
-                    }
-                }
-            }
-        }
-    
-        // Check if initial percentages sum to 1
-        let initialSum = 0;
-        initialPercentageInputs.forEach(input => {
-            initialSum += parseFloat(input.value) || 0;
-        });
-        
-        if (Math.abs(initialSum - 100) > 0.01) {
-            isValid = false;
-            initialPercentageInputs.forEach(input => {
-                input.classList.add('is-invalid');
-                invalidInputs.push(input);
-            });
-        }
-    
-        if (!isValid) {
-            // Scroll to the first invalid input
-            if (invalidInputs.length > 0) {
-                invalidInputs[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                invalidInputs[0].focus();
-            }
-            
-            // Show error message
-            alert("Please correct the following issues:\n" +
-                  "- All probabilities must be between 0 and 1\n" +
-                  "- Each row in transition matrix must sum to 1\n" +
-                  "- Initial percentages must sum to 1");
-        }
-    
-        return isValid;
-    }
-    
-    // Function to submit the form via AJAX and open a pop-up with the result
-    function submitMarkovForm() {
-        // Validate inputs before submission
-        if (!validateProbabilityInputs()) {
-            return;
-        }
-        
-        const form = document.getElementById('markovForm');
-        const formData = new FormData(form);
-    
-        fetch(form.action, {
-            method: 'POST',
-            body: formData,
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Debug the data structure
-            console.log("Response from server:", data);
-            
-            if (data.error) {
-                alert("Error: " + data.error);
-            } else {
-                // More debugging
-                console.log("States:", data.states);
-                console.log("Evolution:", data.evolution);
-                
-                // Open a new pop-up window
-                const resultWindow = window.open('', 'Markov Simulation Result', 'width=800,height=800');
-                resultWindow.document.write('<html><head><title>Markov Chain Result</title>');
-                
-                // Add Bootstrap CSS for better styling
-                resultWindow.document.write('<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">');
-                resultWindow.document.write('</head><body class="container p-4">');
-                
-                // Title
-                resultWindow.document.write('<h2 class="mb-4">Markov Chain Simulation Results</h2>');
-                
-                // Check for plot data
-                if (data.plot) {
-                    // Chart section
-                    resultWindow.document.write('<div class="card mb-4"><div class="card-body">');
-                    resultWindow.document.write('<h3 class="card-title">Probability Evolution Graph</h3>');
-                    resultWindow.document.write(`<img src="data:image/png;base64,${data.plot}" alt="Markov Chain Evolution" class="img-fluid">`);
-                    resultWindow.document.write('</div></div>');
-                }
-                
-                // Matrix evolution section
-                resultWindow.document.write('<div class="card"><div class="card-body">');
-                resultWindow.document.write('<h3 class="card-title">Matrix Evolution</h3>');
-                
-                try {
-                    // Create and append the table
-                    const tableContainer = resultWindow.document.createElement('div');
-                    tableContainer.className = 'table-responsive';
-                    const evolutionTable = createEvolutionTable(data.evolution, data.states);
-                    tableContainer.appendChild(evolutionTable);
-                    
-                    resultWindow.document.body.querySelector('.card:last-child .card-body').appendChild(tableContainer);
-                } catch (err) {
-                    console.error("Error creating evolution table:", err);
-                    resultWindow.document.write('<div class="alert alert-danger">Error creating evolution table: ' + err.message + '</div>');
-                }
-                
-                resultWindow.document.write('</div></div>');
-                resultWindow.document.write('</body></html>');
-                resultWindow.document.close();
-            }
-        })
-        .catch(error => {
-            console.error("Fetch error:", error);
-            alert("An error occurred: " + error);
-        });
-    }
-    
-    // Function to create and format a table from the evolution matrix data
-    function createEvolutionTable(evolution, states) {
-        const table = document.createElement('table');
-        table.className = 'table table-bordered table-striped mt-4';
-        
-        // Create table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        
-        // Add iteration header
-        const iterationHeader = document.createElement('th');
-        iterationHeader.textContent = 'Iteration';
-        headerRow.appendChild(iterationHeader);
-        
-        // Add state headers - with safety check
-        if (Array.isArray(states)) {
-            states.forEach(state => {
-                const stateHeader = document.createElement('th');
-                stateHeader.textContent = state;
-                headerRow.appendChild(stateHeader);
-            });
-        } else {
-            console.error("States is not an array:", states);
-            // Create a default header if states are not available
-            const defaultHeader = document.createElement('th');
-            defaultHeader.textContent = 'State Probabilities';
-            headerRow.appendChild(defaultHeader);
-        }
-        
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        
-        // Create table body
-        const tbody = document.createElement('tbody');
-        
-        // Add rows for each iteration - with safety check
-        if (Array.isArray(evolution)) {
-            evolution.forEach((stateVector, iteration) => {
-                const row = document.createElement('tr');
-                
-                // Add iteration number
-                const iterationCell = document.createElement('td');
-                iterationCell.textContent = iteration;
-                row.appendChild(iterationCell);
-                
-                // Add probabilities for each state - with safety check
-                if (Array.isArray(stateVector)) {
-                    stateVector.forEach(probability => {
-                        const cell = document.createElement('td');
-                        cell.textContent = (probability * 100).toFixed(2) + '%';
-                        row.appendChild(cell);
-                    });
-                } else {
-                    console.error("State vector is not an array:", stateVector);
-                    // Add a placeholder cell if the state vector is invalid
-                    const placeholderCell = document.createElement('td');
-                    placeholderCell.textContent = 'N/A';
-                    row.appendChild(placeholderCell);
-                }
-                
-                tbody.appendChild(row);
-            });
-        } else {
-            console.error("Evolution is not an array:", evolution);
-            // Add a placeholder row if evolution data is missing
-            const placeholderRow = document.createElement('tr');
-            const placeholderCell = document.createElement('td');
-            placeholderCell.colSpan = 2;
-            placeholderCell.textContent = 'No evolution data available';
-            placeholderRow.appendChild(placeholderCell);
-            tbody.appendChild(placeholderRow);
-        }
-        
-        table.appendChild(tbody);
-        return table;
-    }
-    
-    // Update the event listeners for when the form loads
-    document.addEventListener('DOMContentLoaded', function() {
-        // Function to generate the transition matrix and initial percentages inputs based on state names
-        document.getElementById('num_states').addEventListener('input', function() {
-            const numStates = parseInt(this.value);
-            const statesInput = document.getElementById('states').value;
-            const states = statesInput ? statesInput.split(',') : Array.from({ length: numStates }, (_, i) => `State ${i + 1}`);
-    
-            // Generate the transition matrix
-            generateTransitionMatrix(numStates, states);
-    
-            // Generate the initial percentages
-            generateInitialPercentages(numStates, states);
-        });
-    
-        // Update matrix and percentages labels when states are entered/updated
-        document.getElementById('states').addEventListener('input', function() {
-            document.getElementById('num_states').dispatchEvent(new Event('input'));
-        });
-    });
+    loadInitial();
+})();
 </script>

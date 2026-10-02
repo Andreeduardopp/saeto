@@ -1,0 +1,37 @@
+{% comment %}
+Script of the diffusion screens. Include with:
+    form_id, url_name, model_type, fields ("X0,mu,sigma": the model's own inputs)
+{% endcomment %}
+{{ stat_labels|json_script:"statLabels" }}
+<script>
+(function () {
+    const lang = '{{ request.session.language|default:"pt" }}';
+    const screen = window.saetoServerScreen;
+    const form = document.getElementById('{{ form_id }}');
+    const labels = JSON.parse(document.getElementById('statLabels').textContent);
+    const fields = {};
+    '{{ fields }},T,dt,n_simulations'.split(',').forEach(name => { fields[name] = 'number'; });
+
+    screen({
+        form,
+        url: '{% url url_name %}',
+        saveUrl: '{% url "save_financial_model" %}',
+        modelType: '{{ model_type }}',
+        lang,
+        resultsContainer: document.getElementById('resultsContainer'),
+        errorBox: document.getElementById('screenError'),
+        submitButton: document.getElementById('runButton'),
+        resetButton: document.getElementById('resetButton'),
+        saveButton: document.getElementById('saveProjectButton'),
+        readParameters: () => screen.readForm(form, fields),
+        render(data) {
+            const pathsPlot = screen.dataUri(data.paths_plot);
+            const distributionPlot = screen.dataUri(data.distribution_plot);
+            document.getElementById('pathsPlot').src = pathsPlot;
+            document.getElementById('distributionPlot').src = distributionPlot;
+            screen.fillStats(document.getElementById('statisticsTable'), data.statistics, labels, lang);
+            return { statistics: data.statistics, paths_plot: pathsPlot, distribution_plot: distributionPlot };
+        },
+    });
+})();
+</script>

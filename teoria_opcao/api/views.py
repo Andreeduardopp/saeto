@@ -30,16 +30,12 @@ def log_cf_volatility(request):
 
 @login_required(login_url='/admin/login/')
 def copeland_antikarov_volatility(request):
-    """
-    Stochastic approach for volatility estimation using Copeland & Antikarov method.
-    This method treats PV₀ as constant during simulation while CF₁ and PV₁ are stochastic.
-    """
-    return render(request, "site/teoria/copeland-antikarov-template.html")
+    return _render_screen(request, FinantialModelsChoices.COPELAND_ANTIKAROV)
 
 
 @login_required(login_url='/admin/login/')
 def herath_park_volatility(request):
-    return render(request, "site/teoria/herath_park.html")
+    return _render_screen(request, FinantialModelsChoices.HERATH_PARK)
 
 
 @login_required(login_url='/admin/login/')
@@ -114,10 +110,7 @@ def volatility_comparison(request):
 
 @login_required(login_url='/admin/login/')
 def binomial_model_view(request):
-    """
-    View function to render the binomial model template.
-    """
-    return render(request, 'site/teoria/binomial_model.html')
+    return _render_screen(request, FinantialModelsChoices.BINOMIAL_REAL_OPTION)
 
 
 @require_http_methods(["POST"])

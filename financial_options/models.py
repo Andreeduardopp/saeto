@@ -27,6 +27,17 @@ class FinantialModelsChoices(models.TextChoices):
     BULL_BEAR_SPREAD = 'BULL_BEAR_SPREAD', _('Bull / Bear Spread'),
     COLLAR = 'COLLAR', _('Collar'),
     RETURN_VOLATILITY = 'RETURN_VOLATILITY', _('Return & Volatility'),
+    BINOMIAL_REAL_OPTION = 'BINOMIAL_REAL_OPTION', _('Binomial Model (Real Options)'),
+    COPELAND_ANTIKAROV = 'COPELAND_ANTIKAROV', _('Copeland & Antikarov Volatility'),
+    HERATH_PARK = 'HERATH_PARK', _('Herath & Park Volatility'),
+    MARKOV_CHAIN = 'MARKOV_CHAIN', _('Markov Chain'),
+    RANDOM_WALK = 'RANDOM_WALK', _('Random Walk'),
+    RANDOM_WALK_NORMAL = 'RANDOM_WALK_NORMAL', _('Random Walk (Normal)'),
+    ARITHMETIC_BROWNIAN_MOTION = 'ARITHMETIC_BROWNIAN_MOTION', _('Arithmetic Brownian Motion'),
+    GBM_MONTE_CARLO = 'GBM_MONTE_CARLO', _('GBM - Monte Carlo'),
+    GBM_ITO = 'GBM_ITO', _('GBM - Itô'),
+    MEAN_REVERSION = 'MEAN_REVERSION', _('Mean Reversion'),
+    MODELS_COMPARISON = 'MODELS_COMPARISON', _('Stochastic Models Comparison'),
 
 class FinantialModels(ModelPadrao):
     name = models.CharField(max_length=255, default='Financial Model')

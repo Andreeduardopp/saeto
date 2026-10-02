@@ -8,6 +8,7 @@ from django.http import Http404, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 
+from estocasticos.labels import stat_labels
 from estocasticos.use_cases.financial_options.black_scholes_merton_use_case import BlackScholesMertonUseCase
 from estocasticos.use_cases.financial_options.black_sholes_use_case import BlackScholesModelUseCase
 from estocasticos.use_cases.financial_options.cox_ross_rubinstein_use_case import CoxRossRubinsteinUseCase
@@ -25,9 +26,11 @@ def _initial_data(request, model_type):
 
 
 def _render_screen(request, model_type, extra_context=None):
+    language = request.session.get('language', 'pt')
     context = {
         'initial_data': _initial_data(request, model_type),
-        'language': request.session.get('language', 'pt'),
+        'language': language,
+        'stat_labels': stat_labels(language),
         **(extra_context or {}),
     }
     return render(request, REGISTRY[model_type].template, context)
@@ -657,12 +660,10 @@ def rerun_simulation_view(request, simulation_id):
     if spec is None:
         return redirect('simulation_list')
 
-    context = {
+    return _render_screen(request, simulation.model_type, {
         # Defaults first, so saves made before a screen gained an input still re-run.
         'initial_data': {**spec.defaults, **simulation.parameters},
-        'language': request.session.get('language', 'pt')
-    }
-    return render(request, spec.template, context)
+    })
 
 @login_required(login_url='/admin/login/')
 def generalized_black_scholes_merton_template(request):
