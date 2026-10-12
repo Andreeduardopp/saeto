@@ -64,8 +64,8 @@ def _money(value, language):
     return _number(value, language, prefix='R$ ')
 
 
-def _percent(value, language):
-    text = _number(value, language)
+def _percent(value, language, decimals=2):
+    text = _number(value, language, decimals)
     return text if text == '-' else f'{text}%'
 
 
@@ -479,9 +479,9 @@ def _stats(stats, language, decimals=4):
     return {stat_label(key, language): _number(value, language, decimals) for key, value in (stats or {}).items()}
 
 
-def _percent_of(fraction, language):
+def _percent_of(fraction, language, decimals=2):
     try:
-        return _percent(float(fraction) * 100, language)
+        return _percent(float(fraction) * 100, language, decimals)
     except (TypeError, ValueError):
         return '-'
 
@@ -491,22 +491,34 @@ def build_markov_chain_report(parameters, results, language):
     matrix = parameters.get('transition_matrix') or []
     initial = parameters.get('initial_percentages') or []
     evolution = results.get('evolution') or []
+    # Older saves contain every step and have no explicit step numbers.
+    steps = results.get('evolution_steps')
+    if (not isinstance(steps, list) or len(steps) != len(evolution)
+            or any(not isinstance(step, int) or step < 0 for step in steps)):
+        steps = list(range(len(evolution)))
+    sampled = bool(steps) and len(steps) < steps[-1] + 1
     return {
         'tables': [
             {
                 'title': _t(language, 'Matriz de transição (%)', 'Transition matrix (%)'),
+                'compact': len(states) > 5,
                 'headers': [_t(language, 'De \\ Para', 'From \\ To'), *states],
-                'rows': [[state, *[_percent(value, language) for value in row]] for state, row in zip(states, matrix)],
+                'rows': [[state, *[_percent(value, language, 6) for value in row]] for state, row in zip(states, matrix)],
             },
             {
                 'title': _t(language, 'Distribuição inicial', 'Initial distribution'),
                 'headers': [_t(language, 'Estado', 'State'), _t(language, 'Probabilidade', 'Probability')],
-                'rows': [[state, _percent(value, language)] for state, value in zip(states, initial)],
+                'rows': [[state, _percent(value, language, 6)] for state, value in zip(states, initial)],
             },
             {
                 'title': _t(language, 'Evolução das probabilidades', 'Evolution of the probabilities'),
+                'compact': len(states) > 5,
+                'note': _t(language,
+                           'Passos selecionados, incluindo o inicial e o final. O gráfico usa todos os passos calculados.',
+                           'Selected steps, including the first and last. The chart uses every calculated step.') if sampled else '',
                 'headers': [_t(language, 'Iteração', 'Iteration'), *states],
-                'rows': [[step, *[_percent_of(value, language) for value in vector]] for step, vector in enumerate(evolution)],
+                'rows': [[step, *[_percent_of(value, language, 6) for value in vector]]
+                         for step, vector in zip(steps, evolution)],
             },
         ],
         'charts': _charts({_t(language, 'Evolução das probabilidades dos estados', 'Evolution of state probabilities'): results.get('plot')}),

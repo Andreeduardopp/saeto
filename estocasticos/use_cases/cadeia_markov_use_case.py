@@ -4,6 +4,16 @@ import numpy as np
 from estocasticos.use_cases.simulation_support import encode_figure, t
 
 
+MAX_MARKOV_STEPS = 100_000
+MAX_EVOLUTION_ROWS = 501
+
+
+def evolution_steps(steps):
+    """Bound the displayed/saved table, keeping the actual first and last steps."""
+    stride = max(1, (steps + MAX_EVOLUTION_ROWS - 2) // (MAX_EVOLUTION_ROWS - 1))
+    return sorted(set(range(0, steps + 1, stride)) | {steps})
+
+
 class CadeiaMarkovUseCase:
     """
     Evolution of the state distribution of a Markov chain: πₙ₊₁ = πₙ · P.
@@ -13,23 +23,29 @@ class CadeiaMarkovUseCase:
     def __init__(self, states, transition_matrix, initial_distribution, steps, language='pt'):
         self.states = states
         self.transition_matrix = np.array(transition_matrix, dtype=float)  # rows sum to 1
+        # The form accepts rounded percentages. Avoid accumulating their rounding
+        # error over long runs (which would make the total probability drift).
+        self.transition_matrix /= self.transition_matrix.sum(axis=1, keepdims=True)
         self.initial_state = np.array(initial_distribution, dtype=float)
         self.initial_state = self.initial_state / self.initial_state.sum()
         self.steps = steps
         self.language = language
 
     def simulate(self):
-        evolution = [self.initial_state]
-        for _ in range(self.steps):
-            evolution.append(evolution[-1] @ self.transition_matrix)
-        return [state.tolist() for state in evolution]
+        evolution = np.empty((self.steps + 1, len(self.states)))
+        evolution[0] = self.initial_state
+        for step in range(self.steps):
+            evolution[step + 1] = evolution[step] @ self.transition_matrix
+        return evolution
 
     def generate_plot(self, evolution):
         language = self.language
         fig, ax = plt.subplots(figsize=(8, 6))
         iterations = range(len(evolution))
         for i, state in enumerate(self.states):
-            ax.plot(iterations, [vector[i] * 100 for vector in evolution], marker='o', label=state)
+            # Draw the full trajectory, including oscillations between table rows.
+            ax.plot(iterations, evolution[:, i] * 100,
+                    marker='o' if self.steps <= 50 else None, label=state)
         ax.set_title(t(language, 'Evolução das probabilidades dos estados', 'Evolution of state probabilities'))
         ax.set_xlabel(t(language, 'Iteração', 'Iteration'))
         ax.set_ylabel(t(language, 'Probabilidade (%)', 'Probability (%)'))

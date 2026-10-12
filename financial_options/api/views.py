@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 
 from estocasticos.labels import stat_labels
+from estocasticos.use_cases.cadeia_markov_use_case import MAX_MARKOV_STEPS
 from estocasticos.use_cases.financial_options.black_scholes_merton_use_case import BlackScholesMertonUseCase
 from estocasticos.use_cases.financial_options.black_sholes_use_case import BlackScholesModelUseCase
 from estocasticos.use_cases.financial_options.cox_ross_rubinstein_use_case import CoxRossRubinsteinUseCase
@@ -31,6 +32,7 @@ def _render_screen(request, model_type, extra_context=None):
         'initial_data': _initial_data(request, model_type),
         'language': language,
         'stat_labels': stat_labels(language),
+        'max_markov_steps': MAX_MARKOV_STEPS,
         **(extra_context or {}),
     }
     return render(request, REGISTRY[model_type].template, context)
@@ -151,6 +153,18 @@ def black_scholes_view(request):
     else:
         return _render_screen(request, FinantialModelsChoices.BLACK_SCHOLES)
 
+def _read_project_name(data, language, required=False):
+    name = data.get('name', '')
+    if not isinstance(name, str) or len(name.strip()) > 255:
+        raise ValidationError(
+            'Project name must be text with at most 255 characters.' if language == 'en'
+            else 'O nome do projeto deve ser um texto com até 255 caracteres.')
+    name = name.strip()
+    if required and not name:
+        raise ValidationError('Enter a project name.' if language == 'en' else 'Informe um nome para o projeto.')
+    return name
+
+
 @login_required(login_url='/admin/login/')
 @require_POST
 def save_financial_model(request):
@@ -158,6 +172,15 @@ def save_financial_model(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON format.'}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON format.'}, status=400)
+
+    language = request.session.get('language', 'pt')
+    try:
+        name = _read_project_name(data, language)
+    except ValidationError as error:
+        return JsonResponse({'success': False, 'error': ' '.join(error.messages)}, status=400)
 
     model_type = data.get('model_type')
     parameters = data.get('parameters')
@@ -167,6 +190,7 @@ def save_financial_model(request):
 
     financial_model = FinantialModels(
         usuario=request.user,
+        name=name,
         model_type=model_type,
         parameters=parameters,
         results=results,
@@ -180,7 +204,8 @@ def save_financial_model(request):
         print(f"Error saving financial model: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
-    return JsonResponse({'success': True, 'message': 'Project saved successfully!', 'id': financial_model.id})
+    return JsonResponse({'success': True, 'message': 'Project saved successfully!',
+                         'id': financial_model.id, 'name': financial_model.name})
 
 
 def black_scholes_merton_view(request):
@@ -646,6 +671,7 @@ def view_report_view(request, simulation_id):
         'first_name': request.user.first_name,
         'last_name': request.user.last_name,
         'report_title': f"{title_prefix} - {simulation.get_model_type_display()}",
+        'project_name': simulation.name,
         'language': language,
         'parameters': spec.label_parameters(simulation.parameters, language),
         **report,
@@ -788,25 +814,28 @@ def generalized_black_scholes_merton_view(request):
 @login_required(login_url='/admin/login/')
 @require_POST
 def update_simulation_name(request):
+    language = request.session.get('language', 'pt')
     try:
         data = json.loads(request.body)
-        simulation_id = data.get('id')
-        new_name = data.get('name', '').strip()
-
-        if not simulation_id or not new_name:
-            return JsonResponse({'status': 'error', 'message': 'Missing data.'}, status=400)
-
-        simulation = get_object_or_404(FinantialModels, id=simulation_id, usuario=request.user)
-        simulation.name = new_name
-        simulation.save()
-
-        return JsonResponse({'status': 'success', 'message': 'Name updated successfully.'})
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON.'}, status=400)
-    except FinantialModels.DoesNotExist:
+    if not isinstance(data, dict):
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON.'}, status=400)
+
+    simulation_id = data.get('id')
+    if not isinstance(simulation_id, str) or not simulation_id:
+        return JsonResponse({'status': 'error', 'message': 'Invalid project ID.'}, status=400)
+    try:
+        new_name = _read_project_name(data, language, required=True)
+        simulation = get_object_or_404(FinantialModels, id=simulation_id, usuario=request.user)
+    except ValidationError as error:
+        return JsonResponse({'status': 'error', 'message': ' '.join(error.messages)}, status=400)
+    except Http404:
         return JsonResponse({'status': 'error', 'message': 'Simulation not found.'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    simulation.name = new_name
+    simulation.save(update_fields=['name', 'alterado_em'])
+    return JsonResponse({'status': 'success', 'message': 'Name updated successfully.', 'name': simulation.name})
     
 def fdm_european_view(request):
     if request.method == 'POST':

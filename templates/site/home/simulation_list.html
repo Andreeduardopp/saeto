@@ -22,7 +22,8 @@
                 <tr id="simulation-{{ simulation.id }}">
                     <td class="align-middle">
                         <span class="simulation-name" data-id="{{ simulation.id }}">{{ simulation.name }}</span>
-                        <input type="text" class="form-control form-control-sm d-none" value="{{ simulation.name }}">
+                        <button type="button" class="btn btn-link btn-sm rename-btn">{% if request.session.language == 'en' %}Rename{% else %}Renomear{% endif %}</button>
+                        <input type="text" class="form-control form-control-sm d-none" maxlength="255" aria-label="{% if request.session.language == 'en' %}Project name{% else %}Nome do projeto{% endif %}" value="{{ simulation.name }}">
                     </td>
                     <td class="align-middle">{{ simulation.get_model_type_display }}</td>
                     <td class="align-middle">{{ simulation.criado_em|date:"d/m/Y H:i" }}</td>
@@ -156,7 +157,7 @@
     }
 
     async function updateSimulationName(simulationId, newName) {
-        const url = `/financial_options/api/update_simulation_name/`;
+        const url = `{% url 'update_simulation_name' %}`;
         const csrftoken = getCookie('csrftoken');
 
         const response = await fetch(url, {
@@ -185,8 +186,24 @@
             console.error("The main container with ID 'simulations-container' was not found!");
             return;
         }
+
+        const renameError = '{% if request.session.language == "en" %}Could not rename the project.{% else %}Não foi possível renomear o projeto.{% endif %}';
+        function editName(td) {
+            const input = td.querySelector('input');
+            if (input.disabled) return;
+            td.querySelector('.simulation-name').classList.add('d-none');
+            td.querySelector('.rename-btn').classList.add('d-none');
+            input.classList.remove('d-none');
+            input.focus();
+            input.select();
+        }
     
         container.addEventListener('click', async (event) => {
+            const renameButton = event.target.closest('.rename-btn');
+            if (renameButton) {
+                editName(renameButton.parentElement);
+                return;
+            }
             const deleteButton = event.target.closest('.delete-btn');
             
             if (!deleteButton) {
@@ -215,46 +232,45 @@
         container.addEventListener('dblclick', (event) => {
             const nameSpan = event.target.closest('.simulation-name');
             if (nameSpan) {
-                const td = nameSpan.parentElement;
-                const input = td.querySelector('input');
-                
-                nameSpan.classList.add('d-none');
-                input.classList.remove('d-none');
-                input.focus();
-                input.select();
+                editName(nameSpan.parentElement);
             }
         });
 
-        container.addEventListener('focusout', (event) => {
+        container.addEventListener('focusout', async (event) => {
             const input = event.target;
             if (input.tagName === 'INPUT' && input.classList.contains('form-control')) {
                 const td = input.parentElement;
                 const nameSpan = td.querySelector('.simulation-name');
+                const renameButton = td.querySelector('.rename-btn');
                 const simulationId = nameSpan.dataset.id;
                 const originalName = nameSpan.textContent;
                 const newName = input.value.trim();
 
+                if (input.disabled) return;
+
                 if (newName && newName !== originalName) {
-                    updateSimulationName(simulationId, newName)
-                        .then(data => {
-                            if (data.status === 'success') {
-                                nameSpan.textContent = newName;
-                            } else {
-                                alert('Failed to update name: ' + data.message);
-                                input.value = originalName;
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error updating simulation name:', error);
-                            alert('An error occurred while updating the name.');
-                            input.value = originalName;
-                        });
+                    input.disabled = true;
+                    renameButton.disabled = true;
+                    try {
+                        const data = await updateSimulationName(simulationId, newName);
+                        if (data.status !== 'success') throw new Error(data.message || renameError);
+                        nameSpan.textContent = data.name;
+                        input.value = data.name;
+                    } catch (error) {
+                        console.error('Error updating simulation name:', error);
+                        alert(`${renameError} ${error.message}`);
+                        input.value = originalName;
+                    } finally {
+                        input.disabled = false;
+                        renameButton.disabled = false;
+                    }
                 } else {
                     input.value = originalName;
                 }
 
                 input.classList.add('d-none');
                 nameSpan.classList.remove('d-none');
+                renameButton.classList.remove('d-none');
             }
         });
 
@@ -262,8 +278,10 @@
             const input = event.target;
             if (input.tagName === 'INPUT' && input.classList.contains('form-control')) {
                 if (event.key === 'Enter') {
+                    event.preventDefault();
                     input.blur();
                 } else if (event.key === 'Escape') {
+                    event.preventDefault();
                     const td = input.parentElement;
                     const nameSpan = td.querySelector('.simulation-name');
                     input.value = nameSpan.textContent;

@@ -1,9 +1,11 @@
 import json
+import uuid
 
 from django.contrib.auth.models import User
 from django.template.loader import get_template
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.html import escape
 
 from financial_options.models import FinantialModels, FinantialModelsChoices as Choices
 from financial_options.report_html import sanitize_report_html
@@ -270,6 +272,50 @@ class SaveFinancialModelTests(LoggedInTestCase):
         response = self.post('{not json')
         self.assertEqual(response.status_code, 400)
 
+    def test_custom_name_is_trimmed_and_shown_in_the_report(self):
+        parameters, results = FIXTURES[Choices.MARKOV_CHAIN]
+        name = 'Exemplo de Markov <script>alert(1)</script>'
+        response = self.post({'name': f'  {name}  ', 'model_type': Choices.MARKOV_CHAIN,
+                              'parameters': parameters, 'results': results})
+        self.assertEqual(response.status_code, 200)
+        saved = FinantialModels.objects.get(id=response.json()['id'])
+        self.assertEqual(saved.name, name)
+        self.assertEqual(response.json()['name'], name)
+        for language, label in (('pt', 'Projeto:'), ('en', 'Project:')):
+            self.set_language(language)
+            report = self.client.get(reverse('view_report', args=[saved.id]))
+            self.assertContains(report, label)
+            self.assertContains(report, 'Exemplo de Markov &lt;script&gt;alert(1)&lt;/script&gt;')
+            self.assertNotContains(report, '<script>alert(1)</script>')
+
+    def test_omitted_or_blank_names_keep_the_automatic_name(self):
+        parameters, results = FIXTURES[Choices.MARKOV_CHAIN]
+        for extra in ({}, {'name': ''}, {'name': '   '}):
+            response = self.post({'model_type': Choices.MARKOV_CHAIN, 'parameters': parameters,
+                                  'results': results, **extra})
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()['name'].startswith('Markov Chain - '))
+
+    def test_name_validation(self):
+        parameters, results = FIXTURES[Choices.MARKOV_CHAIN]
+        for language, error in (('pt', 'O nome do projeto'), ('en', 'Project name')):
+            self.set_language(language)
+            for name in (None, 123, [], {}, 'x' * 256):
+                with self.subTest(language=language, name=name):
+                    response = self.post({'name': name, 'model_type': Choices.MARKOV_CHAIN,
+                                          'parameters': parameters, 'results': results})
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn(error, response.json()['error'])
+        self.assertFalse(FinantialModels.objects.exists())
+        response = self.post({'name': 'x' * 255, 'model_type': Choices.MARKOV_CHAIN,
+                              'parameters': parameters, 'results': results})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['name'], 'x' * 255)
+
+    def test_non_object_json_returns_400(self):
+        for payload in ('[]', 'null', '123'):
+            self.assertEqual(self.post(payload).status_code, 400)
+
     def test_unknown_model_type_is_rejected(self):
         response = self.post({'model_type': 'NOT_A_MODEL', 'parameters': {'a': 1}, 'results': {'b': 2}})
         self.assertEqual(response.status_code, 400)
@@ -294,6 +340,96 @@ class SaveFinancialModelTests(LoggedInTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('40', response.json()['error'])
         self.assertEqual(FinantialModels.objects.filter(usuario=self.user).count(), 40)
+
+
+class ProjectNamingTests(LoggedInTestCase):
+    def rename(self, simulation, name):
+        return self.client.post(reverse('update_simulation_name'),
+                                {'id': str(simulation.id), 'name': name}, content_type='application/json')
+
+    def test_every_model_can_be_named_renamed_and_reopened_in_both_languages(self):
+        for model_type in REGISTRY:
+            with self.subTest(model_type=model_type):
+                parameters, results = FIXTURES[model_type]
+                original_name = f'Exemplo — {model_type}'
+                response = self.client.post(reverse('save_financial_model'), {
+                    'model_type': model_type, 'name': original_name,
+                    'parameters': parameters, 'results': results,
+                }, content_type='application/json')
+                self.assertEqual(response.status_code, 200)
+                simulation = FinantialModels.objects.get(id=response.json()['id'])
+                self.assertEqual(simulation.name, original_name)
+
+                for language in ('pt', 'en'):
+                    self.set_language(language)
+                    new_name = f'Cenário revisto {language} — {model_type} <teste> & "2026"'
+                    response = self.rename(simulation, f'  {new_name}  ')
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()['name'], new_name)
+                    simulation.refresh_from_db()
+                    self.assertEqual(simulation.name, new_name)
+                    self.assertEqual(simulation.parameters, parameters)
+                    self.assertEqual(simulation.results, results)
+                    # This is the newest save, so it is on the first history page.
+                    history = self.client.get(reverse('simulation_list'))
+                    self.assertContains(history, escape(new_name))
+                    report = self.client.get(reverse('view_report', args=[simulation.id]))
+                    self.assertEqual(report.context['project_name'], new_name)
+                    self.assertContains(report, escape(new_name))
+                    rerun = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+                    self.assertEqual(rerun.context['initial_data'], {**REGISTRY[model_type].defaults, **parameters})
+
+    def test_rename_rejects_invalid_names_without_changing_the_project(self):
+        simulation = self.create_simulation(Choices.BLACK_SCHOLES)
+        original_name = simulation.name
+        for name in ('', '  ', 'x' * 256, None, 12, [], {}):
+            with self.subTest(name=name):
+                response = self.rename(simulation, name)
+                self.assertEqual(response.status_code, 400)
+                simulation.refresh_from_db()
+                self.assertEqual(simulation.name, original_name)
+        self.assertEqual(self.rename(simulation, 'x' * 255).status_code, 200)
+        simulation.refresh_from_db()
+        self.assertEqual(simulation.name, 'x' * 255)
+
+    def test_literal_financial_model_name_is_preserved_on_save_and_rename(self):
+        parameters, results = FIXTURES[Choices.BLACK_SCHOLES]
+        response = self.client.post(reverse('save_financial_model'), {
+            'model_type': Choices.BLACK_SCHOLES, 'name': 'Financial Model',
+            'parameters': parameters, 'results': results,
+        }, content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        simulation = FinantialModels.objects.get(id=response.json()['id'])
+        self.assertEqual(simulation.name, 'Financial Model')
+        self.assertEqual(self.rename(simulation, 'Outro nome').status_code, 200)
+        self.assertEqual(self.rename(simulation, 'Financial Model').status_code, 200)
+        simulation.refresh_from_db()
+        self.assertEqual(simulation.name, 'Financial Model')
+
+    def test_rename_handles_invalid_json_and_missing_or_unknown_ids(self):
+        simulation = self.create_simulation(Choices.BLACK_SCHOLES)
+        for body in ('{', '[]', 'null', '123'):
+            response = self.client.post(reverse('update_simulation_name'), body, content_type='application/json')
+            self.assertEqual(response.status_code, 400)
+        for invalid_id, status in ((None, 400), ('bad-id', 400), (str(uuid.uuid4()), 404)):
+            response = self.client.post(reverse('update_simulation_name'),
+                                        {'id': invalid_id, 'name': 'Novo'}, content_type='application/json')
+            self.assertEqual(response.status_code, status)
+        other = User.objects.create_user('bia', password='secret')
+        self.client.force_login(other)
+        self.assertEqual(self.rename(simulation, 'Alheio').status_code, 404)
+        self.client.logout()
+        self.assertEqual(self.rename(simulation, 'Anônimo').status_code, 302)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(reverse('update_simulation_name')).status_code, 405)
+
+    def test_existing_projects_can_be_renamed_at_the_40_project_limit(self):
+        for _ in range(40):
+            simulation = self.create_simulation(Choices.BLACK_SCHOLES)
+        self.assertEqual(self.rename(simulation, 'Revisado no limite').status_code, 200)
+        simulation.refresh_from_db()
+        self.assertEqual(simulation.name, 'Revisado no limite')
+        self.assertEqual(FinantialModels.objects.count(), 40)
 
 
 class ReportViewTests(LoggedInTestCase):

@@ -40,7 +40,7 @@ class FinantialModelsChoices(models.TextChoices):
     MODELS_COMPARISON = 'MODELS_COMPARISON', _('Stochastic Models Comparison'),
 
 class FinantialModels(ModelPadrao):
-    name = models.CharField(max_length=255, default='Financial Model')
+    name = models.CharField(max_length=255, default='')
     model_type = models.CharField(max_length=100, blank=True, null=True, choices=FinantialModelsChoices.choices)
     parameters = models.JSONField(
         default=dict,
@@ -88,7 +88,7 @@ class FinantialModels(ModelPadrao):
 
     def save(self, *args, **kwargs):
         from django.utils import timezone
-        if not self.name or self.name == 'Financial Model':
+        if not self.name:
             criado_em = timezone.now().strftime('%d/%m/%Y %H:%M')
             if self.criado_em:
                 criado_em = self.criado_em.strftime('%d/%m/%Y %H:%M')

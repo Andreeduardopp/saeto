@@ -25,8 +25,9 @@
                 <input type="text" class="form-control" id="states" name="states" value="{{ initial_data.states|join:', ' }}" required>
             </div>
             <div class="col-md-3 form-group mb-3">
-                <label for="iterations">{% if request.session.language == 'en' %}Iterations (1 to 50):{% else %}Iterações (1 a 50):{% endif %}</label>
-                <input type="number" class="form-control" id="iterations" name="iterations" min="1" max="50" step="1" value="{{ initial_data.iterations }}" required>
+                <label for="iterations">{% if request.session.language == 'en' %}Iterations (1 to {{ max_markov_steps }}):{% else %}Iterações (1 a {{ max_markov_steps }}):{% endif %}</label>
+                <input type="number" class="form-control" id="iterations" name="iterations" min="1" max="{{ max_markov_steps }}" step="1" value="{{ initial_data.iterations }}" aria-describedby="iterationsHelp" required>
+                <small id="iterationsHelp" class="form-text text-muted">{% if request.session.language == 'en' %}Increase the iterations to observe slow changes. The number of steps alone does not guarantee convergence.{% else %}Aumente as iterações para observar mudanças lentas. O número de passos, por si só, não garante a convergência.{% endif %}</small>
             </div>
         </div>
 
@@ -51,6 +52,7 @@
     <div id="resultsContainer" style="display: none;">
         <h3>{% if request.session.language == 'en' %}Evolution of the probabilities{% else %}Evolução das probabilidades{% endif %}</h3>
         <img id="markovPlot" class="img-fluid" alt="{% if request.session.language == 'en' %}Markov chain evolution{% else %}Evolução da cadeia de Markov{% endif %}">
+        <p id="evolutionSummary" class="text-muted mt-3" style="display: none;">{% if request.session.language == 'en' %}For long runs, the table and saved report show selected steps, including the initial and final distributions. The chart uses every calculated step.{% else %}Em execuções longas, a tabela e o relatório salvo mostram passos selecionados, incluindo as distribuições inicial e final. O gráfico usa todos os passos calculados.{% endif %}</p>
         <div class="table-responsive mt-3">
             <table class="table table-bordered table-striped table-sm" id="evolutionTable"></table>
         </div>
@@ -195,16 +197,16 @@
         };
     }
 
-    function showEvolution(evolution, states) {
+    function showEvolution(evolution, states, steps) {
         const table = document.getElementById('evolutionTable');
         table.innerHTML = '';
         const head = cell('tr');
         [T.iteration, ...states].forEach(text => head.appendChild(cell('th', text)));
         table.appendChild(head);
-        evolution.forEach((vector, iteration) => {
+        evolution.forEach((vector, index) => {
             const row = cell('tr');
-            row.appendChild(cell('td', iteration));
-            vector.forEach(p => row.appendChild(cell('td', `${screen.formatNumber(p * 100, lang, 2)}%`)));
+            row.appendChild(cell('td', steps[index]));
+            vector.forEach(p => row.appendChild(cell('td', `${screen.formatNumber(p * 100, lang, 6)}%`)));
             table.appendChild(row);
         });
     }
@@ -224,8 +226,11 @@
         render(data) {
             const plot = screen.dataUri(data.plot);
             document.getElementById('markovPlot').src = plot;
-            showEvolution(data.evolution, data.states);
-            return { evolution: data.evolution, plot };
+            const steps = data.evolution_steps || data.evolution.map((_, index) => index);
+            showEvolution(data.evolution, data.states, steps);
+            document.getElementById('evolutionSummary').style.display =
+                steps.length < steps[steps.length - 1] + 1 ? 'block' : 'none';
+            return { evolution: data.evolution, evolution_steps: steps, plot };
         },
         onReset: loadInitial,
     });

@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from estocasticos.use_cases.abm_use_case import ArithmeticBrownianMotionUseCase
+from estocasticos.use_cases.cadeia_markov_use_case import CadeiaMarkovUseCase, evolution_steps
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
 from estocasticos.use_cases.random_walk_use_case import RandomWalkUseCase
 from financial_options.models import FinantialModels, FinantialModelsChoices as Choices
@@ -135,7 +136,9 @@ class CalculationEndpointTests(CalculationTestCase):
             ({'states': 'A, B'}, 'Informe 3 nomes de estados'),
             ({'states': 'A, A, B'}, 'devem ser diferentes'),
             ({'initial_percentages[1]': '20'}, 'somam 120%'),
-            ({'iterations': '51'}, 'entre 1 e 50'),
+            ({'iterations': '100001'}, 'entre 1 e 100000'),
+            ({'iterations': '0'}, 'entre 1 e 100000'),
+            ({'iterations': '50.5'}, 'número inteiro'),
         ]
         for overrides, message in cases:
             with self.subTest(overrides=overrides):
@@ -153,8 +156,83 @@ class CalculationEndpointTests(CalculationTestCase):
         self.assertEqual(len(evolution), 51)
         np.testing.assert_allclose(evolution[-1], [5 / 6, 1 / 6], atol=1e-9)
 
+    def test_slow_markov_chain_can_run_100000_steps_and_be_saved_and_rerun(self):
+        parameters = {
+            'num_states': 2, 'states': ['A', 'B'], 'iterations': 100000,
+            'transition_matrix': [[99.99, 0.01], [0.01, 99.99]],
+            'initial_percentages': [100, 0],
+        }
+        data = form_data(Choices.MARKOV_CHAIN, num_states=2, states='A, B', iterations=100000)
+        data.update({'transition_matrix[0][0]': 99.99, 'transition_matrix[0][1]': 0.01,
+                     'transition_matrix[1][0]': 0.01, 'transition_matrix[1][1]': 99.99,
+                     'initial_percentages[0]': 100, 'initial_percentages[1]': 0})
+        short_run = self.client.post(reverse('simulate_markov'), {**data, 'iterations': 50}).json()
+        self.assertGreater(short_run['evolution'][-1][0], 0.99)
+
+        response = self.client.post(reverse('simulate_markov'), data)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertLess(len(response.content), 500000)
+        self.assertLessEqual(len(result['evolution']), 501)
+        self.assertEqual(result['evolution_steps'][0], 0)
+        self.assertEqual(result['evolution_steps'][-1], 100000)
+        steps = np.array(result['evolution_steps'])
+        # Closed form for this symmetric two-state chain, at every displayed step.
+        np.testing.assert_allclose(np.array(result['evolution'])[:, 0], 0.5 + 0.5 * 0.9998 ** steps, atol=1e-10)
+        np.testing.assert_allclose(result['evolution'][-1], [0.5, 0.5], atol=2e-9)
+
+        response = self.client.post(reverse('save_financial_model'), {
+            'name': 'Convergência lenta — 99,99%', 'model_type': Choices.MARKOV_CHAIN,
+            'parameters': parameters, 'results': result,
+        }, content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        saved_id = response.json()['id']
+        saved = FinantialModels.objects.get(id=saved_id)
+        self.assertEqual(saved.name, 'Convergência lenta — 99,99%')
+        report = self.client.get(reverse('view_report', args=[saved_id]))
+        self.assertEqual(report.context['tables'][2]['rows'][-1][0], 100000)
+        self.assertContains(report, 'Convergência lenta — 99,99%')
+        self.assertContains(report, 'Passos selecionados')
+        rerun = self.client.get(reverse('rerun_simulation', args=[saved_id]))
+        self.assertEqual(rerun.context['initial_data'], parameters)
+        self.assertContains(rerun, 'max="100000" step="1" value="100000"')
+        repeated = self.client.post(reverse('simulate_markov'), data).json()
+        self.assertEqual(result['evolution'], repeated['evolution'])
+
+    def test_markov_accepts_51_steps_and_preserves_the_unsampled_table(self):
+        response = self.client.post(reverse('simulate_markov'), form_data(Choices.MARKOV_CHAIN, iterations=51))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['evolution_steps'], list(range(52)))
+        self.assertEqual(len(response.json()['evolution']), 52)
+
+    def test_markov_screen_limits_match_in_both_languages(self):
+        for language in ('pt', 'en'):
+            self.set_language(language)
+            response = self.client.get(reverse('cadeia_markov'))
+            self.assertContains(response, 'max="100000" step="1"')
+
 
 class SimulatorTests(TestCase):
+    def test_long_markov_runs_conserve_probability_for_rounded_inputs(self):
+        chain = CadeiaMarkovUseCase(['A', 'B', 'C'],
+                                   [[0.3333, 0.3333, 0.3333], [0, 0.9999, 0.0001], [0, 0.0001, 0.9999]],
+                                   [1, 0, 0], 100000)
+        evolution = chain.simulate()
+        np.testing.assert_allclose(evolution.sum(axis=1), 1, atol=1e-10, rtol=0)
+        self.assertTrue((evolution >= 0).all())
+
+    def test_selected_markov_steps_include_the_final_partial_interval(self):
+        for count in (1, 50, 500, 501, 999, 100000):
+            steps = evolution_steps(count)
+            self.assertEqual(steps[0], 0)
+            self.assertEqual(steps[-1], count)
+            self.assertLessEqual(len(steps), 501)
+            self.assertEqual(steps, sorted(set(steps)))
+
+    def test_a_periodic_markov_chain_keeps_oscillating(self):
+        evolution = CadeiaMarkovUseCase(['A', 'B'], [[0, 1], [1, 0]], [1, 0], 1001).simulate()
+        np.testing.assert_array_equal(evolution[-2:], [[1, 0], [0, 1]])
+
     def test_the_grid_has_T_over_dt_increments_and_ends_at_T(self):
         model = ArithmeticBrownianMotionUseCase(100, 0, 1, 0.3, 0.1, 4, seed=1)
         self.assertEqual(model.steps, 3)  # int(0.3 / 0.1) would give 2
@@ -204,8 +282,8 @@ class StochasticReportTests(CalculationTestCase):
         self.assertEqual(report['parameters'], {'Número de estados': 2, 'Número de iterações': 1})
         matrix, initial, evolution = report['tables']
         self.assertEqual(matrix['headers'], ['De \\ Para', 'Sol', 'Chuva'])
-        self.assertEqual(matrix['rows'][0], ['Sol', '90,00%', '10,00%'])
-        self.assertEqual(evolution['rows'][1], [1, '90,00%', '10,00%'])
+        self.assertEqual(matrix['rows'][0], ['Sol', '90,000000%', '10,000000%'])
+        self.assertEqual(evolution['rows'][1], [1, '90,000000%', '10,000000%'])
 
     def test_rerun_fills_the_saved_seed_and_markov_matrix(self):
         simulation = self.create(Choices.GBM_ITO, {**REGISTRY[Choices.GBM_ITO].defaults, 'seed': 99}, {'statistics': {}})

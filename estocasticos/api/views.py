@@ -7,7 +7,7 @@ from django.views.decorators.http import require_POST
 
 from estocasticos.api.inputs import InvalidInput, check_grid, read_choice, read_number, read_seed
 from estocasticos.use_cases.abm_use_case import ArithmeticBrownianMotionUseCase
-from estocasticos.use_cases.cadeia_markov_use_case import CadeiaMarkovUseCase
+from estocasticos.use_cases.cadeia_markov_use_case import CadeiaMarkovUseCase, MAX_MARKOV_STEPS, evolution_steps
 from estocasticos.use_cases.comparacao_modelos_use_case import ComparacaoModelosUseCase
 from estocasticos.use_cases.mbg_ito_use_case import GeometricBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
@@ -178,11 +178,17 @@ def markov_simulator(data, language):
             f'As porcentagens iniciais somam {sum(initial):g}%; devem somar 100%.',
             f'The initial percentages add up to {sum(initial):g}%; they must add up to 100%.',
         )
-    iterations = read_number(data, 'iterations', ('Número de iterações', 'Number of iterations'), minimum=1, maximum=50, integer=True)
+    iterations = read_number(data, 'iterations', ('Número de iterações', 'Number of iterations'), minimum=1, maximum=MAX_MARKOV_STEPS, integer=True)
 
     chain = CadeiaMarkovUseCase(states, matrix, [value / 100 for value in initial], iterations, language)
     evolution = chain.simulate()
-    return {'plot': chain.generate_plot(evolution), 'evolution': evolution, 'states': states}
+    steps = evolution_steps(iterations)
+    return {
+        'plot': chain.generate_plot(evolution),
+        'evolution': evolution[steps].tolist(),
+        'evolution_steps': steps,
+        'states': states,
+    }
 
 
 @calculation

@@ -89,6 +89,13 @@
             padding: 4px 8px;
             text-align: right;
         }
+        table.data-table.compact {
+            font-size: 7pt;
+        }
+        .data-table.compact th, .data-table.compact td {
+            padding: 3px 2px;
+            overflow-wrap: anywhere;
+        }
         .table-note {
             font-size: 10pt;
             color: #555;
@@ -158,6 +165,9 @@
     <h1>{{ report_title|default:"Financial Model Report" }}</h1>
 
     <div class="user-info">
+        {% if project_name %}
+            <p>{% if language == 'en' %}Project:{% else %}Projeto:{% endif %} <strong>{{ project_name }}</strong></p>
+        {% endif %}
         {% if first_name and last_name %}
             <p>
                 {% if language == 'en' %}
@@ -219,7 +229,7 @@
         <h3>{{ table.title }}</h3>
         {% if table.note %}<p class="table-note">{{ table.note }}</p>{% endif %}
         {% if table.rows %}
-        <table class="data-table">
+        <table class="data-table{% if table.compact %} compact{% endif %}">
             <thead><tr>{% for header in table.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
             <tbody>
                 {% for row in table.rows %}
