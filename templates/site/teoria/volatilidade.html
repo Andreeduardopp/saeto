@@ -1,134 +1,801 @@
-<div class="container mt-5">
-    <h1 id="title">{% if request.session.language == 'en' %}Return and Volatility Estimation{% else %}Estimativas de Retornos e Volatilidades{% endif %}</h1>
-    <form id="volatilityForm" novalidate>
-        {% csrf_token %}
-        <div class="form-group">
-            <label id="labelTimeInterval" for="timeInterval">
-                {% if request.session.language == 'en' %}Number of Periods (asset values):{% else %}Número de Períodos (valores do ativo):{% endif %}
-            </label>
-            <input type="number" id="timeInterval" class="form-control" value="{{ initial_data.periods }}"
-                   placeholder="{% if request.session.language == 'en' %}Enter the number of periods{% else %}Insira o número de períodos{% endif %}"
-                   min="3" max="100" step="1" required>
-            <button type="submit" class="btn btn-primary mt-3" id="generateTableButton">
-                {% if request.session.language == 'en' %}Generate Table{% else %}Gerar Tabela{% endif %}
+<style>
+    /* Return & volatility screen: Data -> Action -> Results on one page, with the
+       summary above the long tables and the actions always within reach. */
+    .rv-screen [hidden] { display: none !important; }
+    .rv-screen .rv-card {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    .rv-screen .rv-section-title { margin: 0 0 12px; }
+    .rv-screen .rv-lead { color: #495057; margin-bottom: 8px; }
+    .rv-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        background-color: #e2e3e5;
+        color: #383d41;
+    }
+    .rv-badge-project { background-color: #cce5ff; color: #004085; }
+    .rv-badge-user { background-color: #d4edda; color: #155724; }
+    .rv-badge-pending { background-color: #fff3cd; color: #856404; }
+    .rv-badge-file { background-color: #d1ecf1; color: #0c5460; }
+    .rv-mode { border: 0; margin: 0 0 16px; padding: 0; }
+    .rv-mode legend {
+        float: none;
+        width: auto;
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    .rv-mode-options { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+    .rv-mode-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        flex: 1 1 280px;
+        margin: 0;
+        padding: 10px 12px;
+        background-color: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 400;
+    }
+    .rv-mode-option.rv-mode-active { border-color: #0069d9; background-color: #f1f8ff; }
+    .rv-mode-option input { margin-top: 4px; }
+    .rv-mode-option .rv-hint { margin-top: 2px; }
+    .rv-import { margin-bottom: 16px; }
+    .rv-dropzone {
+        border: 2px dashed #adb5bd;
+        border-radius: 8px;
+        background-color: #ffffff;
+        padding: 16px;
+        text-align: center;
+    }
+    .rv-dropzone.rv-dropping { border-color: #0069d9; background-color: #f1f8ff; }
+    .rv-dropzone input[type="file"] { max-width: 100%; }
+    .rv-dropzone .rv-drop-hint { margin: 8px 0 0; }
+    .rv-import-help { margin-top: 10px; }
+    .rv-import-help ul { margin-bottom: 8px; padding-left: 20px; font-size: 0.9rem; }
+    .rv-import-help li { margin-bottom: 2px; }
+    .rv-preview {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid #b8daff;
+        border-radius: 6px;
+        background-color: #f1f8ff;
+    }
+    .rv-preview-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 16px;
+        align-items: flex-end;
+        margin: 10px 0;
+    }
+    .rv-preview-controls label { margin-bottom: 2px; font-size: 0.85rem; }
+    .rv-preview-controls select,
+    .rv-preview-controls input[type="number"] { width: auto; min-width: 7rem; }
+    .rv-preview-check { display: flex; align-items: center; gap: 6px; }
+    .rv-ambiguous {
+        margin: 8px 0 0;
+        padding: 8px 10px;
+        border: 1px solid #ffeeba;
+        border-radius: 6px;
+        background-color: #fff3cd;
+        color: #856404;
+        font-size: 0.88rem;
+    }
+    .rv-screen table.rv-preview-table { background-color: #ffffff; margin-bottom: 8px; }
+    .rv-screen table.rv-preview-table td { font-variant-numeric: tabular-nums; }
+    .rv-preview-skip td { text-align: center; color: #6c757d; }
+    .rv-count-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .rv-count-row .rv-field { flex: 0 1 260px; }
+    .rv-count-row .rv-apply { margin-top: 29px; }
+    .rv-hint { font-size: 0.85rem; color: #6c757d; margin: 4px 0 0; }
+    .rv-error { font-size: 0.85rem; color: #a71d2a; margin: 4px 0 0; font-weight: 500; }
+    .rv-check {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        align-items: center;
+        margin: 12px 0 0;
+        padding: 10px 12px;
+        background-color: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        font-size: 0.92rem;
+    }
+    .rv-number { font-variant-numeric: tabular-nums; }
+    .rv-error-summary {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    .rv-error-summary ul { margin: 6px 0; padding-left: 20px; font-size: 0.9rem; }
+    .rv-table-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+    }
+    .rv-pager {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.88rem;
+    }
+    .rv-pager select { width: auto; display: inline-block; }
+    .rv-pager-nav { display: flex; align-items: center; gap: 4px; }
+    .rv-pager-status { font-variant-numeric: tabular-nums; min-width: 10ch; text-align: center; }
+    .rv-screen table.rv-prices { margin-bottom: 8px; background-color: #ffffff; }
+    .rv-screen table.rv-prices th.rv-row-index {
+        width: 7rem;
+        vertical-align: middle;
+        font-variant-numeric: tabular-nums;
+    }
+    .rv-screen table.rv-prices td { padding: 4px 8px; }
+    .rv-row-error { font-size: 0.8rem; color: #a71d2a; margin: 2px 0 0; }
+    .rv-screen input[aria-invalid="true"] { border-color: #a71d2a; background-color: #fff5f5; }
+    .rv-data-actions { margin-top: 12px; justify-content: flex-start; }
+    .rv-main-action {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 16px;
+    }
+    .rv-results-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    .rv-stale {
+        margin: 12px 0 0;
+        padding: 10px 12px;
+        border: 1px solid #ffeeba;
+        border-radius: 6px;
+        background-color: #fff3cd;
+        color: #856404;
+        font-weight: 500;
+    }
+    .rv-screen table.rv-summary { margin: 12px 0 4px; background-color: #ffffff; }
+    .rv-screen table.rv-summary td,
+    .rv-screen table.rv-summary th { vertical-align: middle; }
+    .rv-screen table.rv-summary .rv-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .rv-meta { font-size: 0.9rem; color: #495057; margin: 0; font-variant-numeric: tabular-nums; }
+    .rv-chart { position: relative; height: 360px; margin-top: 20px; }
+    .rv-details { margin-top: 20px; }
+    .rv-details > summary { cursor: pointer; font-weight: 600; }
+    .rv-screen table.rv-returns { margin-top: 12px; background-color: #ffffff; }
+    .rv-screen table.rv-returns td { font-variant-numeric: tabular-nums; }
+    @media (max-width: 575.98px) {
+        .rv-count-row .rv-apply { margin-top: 0; }
+        .rv-count-row .rv-field { flex-basis: 100%; }
+        .rv-screen table.rv-prices th.rv-row-index { width: 4.5rem; }
+        .rv-results-head .saeto-actions { justify-content: flex-start; }
+        .rv-chart { height: 260px; }
+    }
+</style>
+
+<div class="container rv-screen mt-4" id="returnVolatilityScreen">
+    <header>
+        <h1 id="title" class="h3">
+            {% if request.session.language == 'en' %}Return and volatility{% else %}Retorno e volatilidade{% endif %}
+        </h1>
+        <p class="rv-lead">
+            {% if request.session.language == 'en' %}
+            Discrete and continuous returns, mean return and volatility per period, from a series of prices ordered from the oldest to the most recent.
+            {% else %}
+            Retornos discretos e contínuos, retorno médio e volatilidade por período, a partir de uma série de preços do mais antigo para o mais recente.
+            {% endif %}
+        </p>
+        <p class="mb-3">
+            <span class="rv-badge" id="dataSourceBadge"></span>
+            <span class="rv-hint d-inline" id="dataSourceText"></span>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="exampleLink" hidden>
+                {% if request.session.language == 'en' %}load the example again{% else %}carregar o exemplo novamente{% endif %}
             </button>
+        </p>
+    </header>
+
+    <section class="rv-card" aria-labelledby="dataSectionTitle">
+        <h2 class="h5 rv-section-title" id="dataSectionTitle">
+            {% if request.session.language == 'en' %}1. Data{% else %}1. Dados{% endif %}
+        </h2>
+
+        <fieldset class="rv-mode">
+            <legend>
+                {% if request.session.language == 'en' %}How do you want to enter the prices?{% else %}Como você quer informar os preços?{% endif %}
+            </legend>
+            <div class="rv-mode-options">
+                <label class="rv-mode-option">
+                    <input type="radio" name="dataMode" id="dataModeManual" value="manual" checked>
+                    <span>
+                        <strong>{% if request.session.language == 'en' %}Fill in manually{% else %}Preencher manualmente{% endif %}</strong>
+                        <span class="rv-hint d-block">
+                            {% if request.session.language == 'en' %}Enter the number of prices (N) and type them in the table.{% else %}Informe o número de preços (N) e digite os valores na tabela.{% endif %}
+                        </span>
+                    </span>
+                </label>
+                <label class="rv-mode-option">
+                    <input type="radio" name="dataMode" id="dataModeFile" value="file">
+                    <span>
+                        <strong>{% if request.session.language == 'en' %}Import a file{% else %}Importar um arquivo{% endif %}</strong>
+                        <span class="rv-hint d-block">
+                            {% if request.session.language == 'en' %}CSV, TXT or XLSX: N and the prices come from the file, with no table to fill in.{% else %}CSV, TXT ou XLSX: N e os preços vêm do arquivo, sem tabela para preencher.{% endif %}
+                        </span>
+                    </span>
+                </label>
+            </div>
+        </fieldset>
+
+        <div class="rv-import" id="importSection">
+            <div class="rv-dropzone" id="dropZone">
+                <label class="font-weight-bold mb-2 d-block" for="priceFileInput">
+                    {% if request.session.language == 'en' %}Import a file with the prices{% else %}Importar um arquivo com os preços{% endif %}
+                </label>
+                <input type="file" id="priceFileInput" class="form-control-file"
+                       accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                       aria-describedby="importFormats">
+                <p class="rv-hint rv-drop-hint" id="importFormats">
+                    {% if request.session.language == 'en' %}
+                    CSV, TXT or XLSX · up to <span data-limit-mb>5</span> MB · a column of prices, from the oldest to the most recent. You can also drop the file here.
+                    {% else %}
+                    CSV, TXT ou XLSX · até <span data-limit-mb>5</span> MB · uma coluna de preços, do mais antigo para o mais recente. Você também pode arrastar o arquivo até aqui.
+                    {% endif %}
+                </p>
+            </div>
+
+            <details class="rv-import-help" id="importHelp">
+                <summary>
+                    {% if request.session.language == 'en' %}How the file must be organised{% else %}Como o arquivo deve estar organizado{% endif %}
+                </summary>
+                {% if request.session.language == 'en' %}
+                <ul>
+                    <li><strong>One price per row</strong>, ordered from the oldest to the most recent. If your file runs the other way, tick “the file is from the most recent to the oldest” in the preview.</li>
+                    <li><strong>A header is optional.</strong> A first row named <code>Price</code>, <code>Close</code> or similar is recognised; you can correct the choice in the preview.</li>
+                    <li><strong>Other columns are fine.</strong> A file with <code>Date</code> and <code>Price</code> works: pick the price column in the preview. Dates are never read as prices.</li>
+                    <li><strong>Decimal separator:</strong> a dot or a comma, with <strong>no thousands separator</strong>. <code>1,234.56</code> and <code>1.234,56</code> are refused as ambiguous instead of being guessed.</li>
+                    <li><strong>CSV separator:</strong> <code>;</code>, <code>,</code> or tab, detected from the file.</li>
+                    <li><strong>Prices must be greater than zero</strong>, and from {{ limits.min_prices }} to {{ limits.max_prices }} of them. Empty rows inside the series are reported with their line, never dropped in silence.</li>
+                    <li><strong>Excel:</strong> <code>.xlsx</code> only. Save <code>.xls</code> or <code>.xlsm</code> as <code>.xlsx</code> or CSV first. Values are read as the sheet stored them; a formula is read from its saved result, and a cell without one is reported by its address.</li>
+                </ul>
+                <p class="mb-0">
+                    Model files:
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-model="csv">download the CSV model</button> ·
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-model="xlsx">download the Excel model</button>
+                    (nine prices of the handbook example).
+                </p>
+                {% else %}
+                <ul>
+                    <li><strong>Um preço por linha</strong>, do mais antigo para o mais recente. Se o seu arquivo estiver ao contrário, marque “o arquivo está do mais recente para o mais antigo” na conferência.</li>
+                    <li><strong>O cabeçalho é opcional.</strong> Uma primeira linha chamada <code>Preço</code>, <code>Fechamento</code> ou parecida é reconhecida; você pode corrigir a escolha na conferência.</li>
+                    <li><strong>Outras colunas não atrapalham.</strong> Um arquivo com <code>Data</code> e <code>Preço</code> funciona: escolha a coluna de preços na conferência. Datas nunca são lidas como preço.</li>
+                    <li><strong>Separador decimal:</strong> ponto ou vírgula, <strong>sem separador de milhar</strong>. <code>1.234,56</code> e <code>1,234.56</code> são recusados como ambíguos.</li>
+                    <li><strong>Separador do CSV:</strong> <code>;</code>, <code>,</code> ou tabulação, detectado a partir do arquivo.</li>
+                    <li><strong>Os preços devem ser maiores que zero</strong>, de {{ limits.min_prices }} a {{ limits.max_prices }} deles. Linhas vazias no meio da série são apontadas com a linha.</li>
+                    <li><strong>Excel:</strong> apenas <code>.xlsx</code>. Salve <code>.xls</code> ou <code>.xlsm</code> como <code>.xlsx</code> ou CSV antes. Os valores são lidos como a planilha os guardou; uma fórmula é lida pelo resultado salvo, e a célula sem esse resultado é apontada pelo endereço.</li>
+                </ul>
+                <p class="mb-0">
+                    Modelos:
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-model="csv">baixar o modelo CSV</button> ·
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-model="xlsx">baixar o modelo Excel</button>
+                    (nove preços do exemplo da apostila).
+                </p>
+                {% endif %}
+            </details>
+
+            <p class="rv-hint" id="importStatus" role="status" hidden></p>
+            <p class="rv-error" id="importError" role="alert" hidden></p>
+
+            <div class="rv-preview" id="importPreview" hidden>
+                <h3 class="h6" id="previewTitle" tabindex="-1">
+                    {% if request.session.language == 'en' %}Check the file{% else %}Conferência do arquivo{% endif %}
+                </h3>
+                <p class="rv-hint mb-0" id="previewFile"></p>
+                <p class="rv-ambiguous" id="previewAmbiguous" role="status" hidden></p>
+
+                <div class="rv-preview-controls">
+                    <div id="previewSheetField" hidden>
+                        <label for="previewSheet">
+                            {% if request.session.language == 'en' %}Sheet{% else %}Planilha{% endif %}
+                        </label>
+                        <select id="previewSheet" class="form-control form-control-sm"></select>
+                    </div>
+                    <div id="previewDelimiterField" hidden>
+                        <label for="previewDelimiter">
+                            {% if request.session.language == 'en' %}Separator{% else %}Separador{% endif %}
+                        </label>
+                        <select id="previewDelimiter" class="form-control form-control-sm"></select>
+                    </div>
+                    <div>
+                        <label for="previewColumn">
+                            {% if request.session.language == 'en' %}Price column{% else %}Coluna de preços{% endif %}
+                        </label>
+                        <select id="previewColumn" class="form-control form-control-sm"></select>
+                    </div>
+                    <div>
+                        <label for="previewFrom">
+                            {% if request.session.language == 'en' %}From line{% else %}Da linha{% endif %}
+                        </label>
+                        <input type="number" id="previewFrom" class="form-control form-control-sm" min="1" step="1">
+                    </div>
+                    <div>
+                        <label for="previewTo">
+                            {% if request.session.language == 'en' %}To line{% else %}Até a linha{% endif %}
+                        </label>
+                        <input type="number" id="previewTo" class="form-control form-control-sm" min="1" step="1">
+                    </div>
+                    <div class="rv-preview-check">
+                        <input type="checkbox" id="previewHeader">
+                        <label class="mb-0" for="previewHeader">
+                            {% if request.session.language == 'en' %}First row is a header{% else %}A primeira linha é cabeçalho{% endif %}
+                        </label>
+                    </div>
+                    <div class="rv-preview-check">
+                        <input type="checkbox" id="previewReverse">
+                        <label class="mb-0" for="previewReverse">
+                            {% if request.session.language == 'en' %}File runs from the most recent to the oldest{% else %}O arquivo está do mais recente para o mais antigo{% endif %}
+                        </label>
+                    </div>
+                </div>
+
+                <p class="mb-1" id="previewCounts" aria-live="polite"></p>
+                <div class="table-responsive" role="region" aria-labelledby="previewTitle" tabindex="0">
+                    <table class="table table-sm table-bordered rv-preview-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">{% if request.session.language == 'en' %}Where{% else %}Onde{% endif %}</th>
+                                <th scope="col">{% if request.session.language == 'en' %}Value in the file{% else %}Valor no arquivo{% endif %}</th>
+                                <th scope="col">{% if request.session.language == 'en' %}Price{% else %}Preço{% endif %}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewRows"></tbody>
+                    </table>
+                </div>
+                <ul class="rv-error" id="previewErrors" hidden></ul>
+
+                <div class="saeto-actions" style="justify-content: flex-start;">
+                    <button type="button" class="btn btn-primary btn-sm" id="usePricesButton">
+                        {% if request.session.language == 'en' %}Use these prices{% else %}Usar estes preços{% endif %}
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelImportButton">
+                        {% if request.session.language == 'en' %}Cancel{% else %}Cancelar{% endif %}
+                    </button>
+                </div>
+            </div>
         </div>
-    </form>
 
-    <div id="volatilityError" class="alert alert-danger mt-3" style="display: none;"></div>
+        <form id="volatilityForm" novalidate>
+            {% csrf_token %}
+            <div class="rv-count-row">
+                <div class="rv-field">
+                    <label id="labelPriceCount" for="priceCount">
+                        {% if request.session.language == 'en' %}Number of prices (N){% else %}Número de preços (N){% endif %}
+                    </label>
+                    <input type="number" id="priceCount" class="form-control" inputmode="numeric"
+                           value="{{ initial_data.periods }}" min="{{ limits.min_prices }}"
+                           max="{{ limits.max_prices }}" step="1" autocomplete="off"
+                           aria-describedby="priceCountHint priceCountError">
+                    <p class="rv-hint" id="priceCountHint"></p>
+                    <p class="rv-error" id="priceCountError" role="alert" hidden></p>
+                </div>
+                <button type="submit" class="btn btn-outline-primary rv-apply" id="applyCountButton">
+                    {% if request.session.language == 'en' %}Apply{% else %}Aplicar{% endif %}
+                </button>
+            </div>
+        </form>
 
-    <div id="inputTableContainer" class="mt-4" style="display: none;">
-        <h3 id="fillValuesTitle">
-            {% if request.session.language == 'en' %}Fill in the Asset Values{% else %}Preencha os Valores dos Ativos{% endif %}
-        </h3>
-        <table class="table table-bordered" id="inputTable">
+        <div class="rv-check" id="inputCheck" aria-live="polite">
+            <span><strong class="rv-number" id="checkPrices">0</strong>
+                {% if request.session.language == 'en' %}prices{% else %}preços{% endif %}</span>
+            <span><strong class="rv-number" id="checkReturns">0</strong>
+                {% if request.session.language == 'en' %}returns{% else %}retornos{% endif %}</span>
+            <span>{% if request.session.language == 'en' %}First{% else %}Primeiro{% endif %}:
+                <strong class="rv-number" id="checkFirst">—</strong></span>
+            <span>{% if request.session.language == 'en' %}Last{% else %}Último{% endif %}:
+                <strong class="rv-number" id="checkLast">—</strong></span>
+            <span class="rv-badge rv-badge-pending" id="pendingBadge" hidden>
+                {% if request.session.language == 'en' %}Table pending{% else %}Tabela pendente{% endif %}
+            </span>
+        </div>
+        <p class="rv-hint" id="pendingText" hidden></p>
+
+        <div class="rv-error-summary" id="errorSummary" role="alert" hidden>
+            <p class="mb-1" id="errorSummaryText"></p>
+            <ul id="errorSummaryList"></ul>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="goToFirstErrorButton"></button>
+        </div>
+
+        <div id="manualTable">
+            <div class="rv-table-head">
+                <h3 class="h6 mb-0" id="pricesTableTitle">
+                    {% if request.session.language == 'en' %}Asset prices{% else %}Preços do ativo{% endif %}
+                </h3>
+                <div class="rv-pager" id="pricesPager">
+                    <label class="mb-0" for="pricesPageSize">
+                        {% if request.session.language == 'en' %}Rows per page{% else %}Linhas por página{% endif %}
+                    </label>
+                    <select id="pricesPageSize" class="form-control form-control-sm" data-page-size></select>
+                    <div class="rv-pager-nav">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-page="first">&laquo;</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-page="prev">&lsaquo;</button>
+                        <span class="rv-pager-status" data-page-status aria-live="polite"></span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-page="next">&rsaquo;</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-page="last">&raquo;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="table-responsive" role="region" aria-labelledby="pricesTableTitle" tabindex="0">
+                <table class="table table-sm table-bordered rv-prices" id="inputTable">
+                    <thead>
+                        <tr>
+                            <th scope="col" id="periodColumn">
+                                {% if request.session.language == 'en' %}Period (t){% else %}Período (t){% endif %}
+                            </th>
+                            <th scope="col" id="valueColumn">
+                                {% if request.session.language == 'en' %}Asset price S(t){% else %}Preço do ativo S(t){% endif %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Only the rows of the current page: the series lives in memory -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="rv-pager" id="pricesPagerBottom">
+                <div class="rv-pager-nav">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="first">&laquo;</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="prev">&lsaquo;</button>
+                    <span class="rv-pager-status" data-page-status></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="next">&rsaquo;</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="last">&raquo;</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="saeto-actions rv-data-actions">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="undoButton" hidden></button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="clearButton">
+                {% if request.session.language == 'en' %}Clear data{% else %}Limpar dados{% endif %}
+            </button>
+            {% if is_rerun %}
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="restoreButton">
+                {% if request.session.language == 'en' %}Restore saved data{% else %}Restaurar dados salvos{% endif %}
+            </button>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="rv-main-action">
+        <button type="button" class="btn btn-primary btn-lg" id="calculateButton">
+            {% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}
+        </button>
+        <p class="rv-hint mb-0" id="calculateHint" hidden></p>
+    </div>
+
+    <section class="rv-card" id="resultsContainer" aria-labelledby="resultsTitle" hidden>
+        <div class="rv-results-head">
+            <h2 class="h5 mb-0" id="resultsTitle" tabindex="-1">
+                {% if request.session.language == 'en' %}2. Results{% else %}2. Resultados{% endif %}
+            </h2>
+            <div class="saeto-actions">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="copyTableButton">
+                    {% if request.session.language == 'en' %}Copy to Excel{% else %}Copiar para Excel{% endif %}
+                </button>
+                <button type="button" class="btn btn-success btn-sm" id="saveProjectButton">
+                    {% if request.session.language == 'en' %}Save project{% else %}Salvar projeto{% endif %}
+                </button>
+            </div>
+        </div>
+
+        <p class="rv-stale" id="staleBanner" role="status" hidden></p>
+        <p class="rv-hint" id="outputHint" hidden></p>
+        <p class="rv-error" id="copyError" role="alert" hidden></p>
+
+        <table class="table table-bordered rv-summary">
             <thead>
                 <tr>
-                    <th id="periodColumn">
-                        {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
+                    <th scope="col">{% if request.session.language == 'en' %}Measure{% else %}Medida{% endif %}</th>
+                    <th scope="col" id="discreteReturnColumn">
+                        {% if request.session.language == 'en' %}Discrete return{% else %}Retorno discreto{% endif %}
                     </th>
-                    <th id="valueColumn">
-                        {% if request.session.language == 'en' %}Asset Value{% else %}Valor do Ativo{% endif %}
+                    <th scope="col" id="continuousReturnColumn">
+                        {% if request.session.language == 'en' %}Continuous return{% else %}Retorno contínuo{% endif %}
                     </th>
                 </tr>
             </thead>
             <tbody>
-                <!-- Rows will be generated dynamically -->
-            </tbody>
-        </table>
-        <div class="saeto-actions">
-            <button type="button" class="btn btn-secondary" id="clearButton">
-                {% if request.session.language == 'en' %}Clear{% else %}Limpar{% endif %}
-            </button>
-            <button type="button" class="btn btn-primary" id="calculateButton">
-                {% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}
-            </button>
-            <button type="button" class="btn btn-success" id="saveProjectButton" disabled>
-                {% if request.session.language == 'en' %}Save Project{% else %}Salvar Projeto{% endif %}
-            </button>
-        </div>
-    </div>
-
-    <div id="resultsContainer" class="mt-5" style="display: none;">
-        <div class="d-flex justify-content-between align-items-center">
-            <h3 id="resultsTitle">
-                {% if request.session.language == 'en' %}Results{% else %}Resultados{% endif %}
-            </h3>
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="copyTableButton">
-                {% if request.session.language == 'en' %}Copy table (Excel){% else %}Copiar tabela (Excel){% endif %}
-            </button>
-        </div>
-        <table class="table table-bordered">
-            <thead>
                 <tr>
-                    <th id="resultsPeriodColumn">
-                        {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
+                    <th scope="row">
+                        {% if request.session.language == 'en' %}Mean return (per period){% else %}Retorno médio (por período){% endif %}
                     </th>
-                    <th id="discreteReturnColumn">
-                        {% if request.session.language == 'en' %}Discrete Return{% else %}Retorno Discreto{% endif %}
-                    </th>
-                    <th id="continuousReturnColumn">
-                        {% if request.session.language == 'en' %}Continuous Return{% else %}Retorno Contínuo{% endif %}
-                    </th>
+                    <td class="rv-value" id="meanDiscrete">—</td>
+                    <td class="rv-value" id="meanContinuous">—</td>
                 </tr>
-            </thead>
-            <tbody id="resultsTable">
+                <tr>
+                    <th scope="row" id="volatilityTitle">
+                        {% if request.session.language == 'en' %}Volatility (per period){% else %}Volatilidade (por período){% endif %}
+                    </th>
+                    <td class="rv-value" id="volatilityDiscrete">—</td>
+                    <td class="rv-value" id="volatilityContinuous">—</td>
+                </tr>
             </tbody>
         </table>
-        <div class="mt-4">
-            <canvas id="returnsChart"></canvas>
-        </div>
-        <h4 class="mt-4">
-            {% if request.session.language == 'en' %}Mean Return (per period){% else %}Retorno Médio (por período){% endif %}
-        </h4>
-        <p><strong>{% if request.session.language == 'en' %}Discrete:{% else %}Discreto:{% endif %}</strong> <span id="meanDiscrete"></span></p>
-        <p><strong>{% if request.session.language == 'en' %}Continuous:{% else %}Contínuo:{% endif %}</strong> <span id="meanContinuous"></span></p>
-        <h4 id="volatilityTitle" class="mt-4">
-            {% if request.session.language == 'en' %}Volatility (per period){% else %}Volatilidade (por período){% endif %}
-        </h4>
-        <p><strong id="discreteVolatilityLabel">
-            {% if request.session.language == 'en' %}Discrete Volatility:{% else %}Volatilidade Discreta:{% endif %}
-        </strong> <span id="volatilityDiscrete"></span></p>
-        <p><strong id="continuousVolatilityLabel">
-            {% if request.session.language == 'en' %}Continuous Volatility:{% else %}Volatilidade Contínua:{% endif %}
-        </strong> <span id="volatilityContinuous"></span></p>
-        <p class="text-muted small">
+        <p class="rv-meta" id="resultsMeta"></p>
+        <p class="text-muted small mt-2 mb-0">
             {% if request.session.language == 'en' %}Sample standard deviation (n − 1) of the returns, in the unit of the periods entered; it is not annualized.{% else %}Desvio-padrão amostral (n − 1) dos retornos, na unidade dos períodos informados; não é anualizada.{% endif %}
         </p>
-    </div>
+
+        <div class="rv-chart">
+            <canvas id="returnsChart"></canvas>
+        </div>
+
+        <details class="rv-details" id="returnsDetails">
+            <summary id="returnsTableTitle">
+                {% if request.session.language == 'en' %}See every return (table){% else %}Ver todos os retornos (tabela){% endif %}
+            </summary>
+            <div class="rv-pager mt-2" id="returnsPager">
+                <label class="mb-0" for="returnsPageSize">
+                    {% if request.session.language == 'en' %}Rows per page{% else %}Linhas por página{% endif %}
+                </label>
+                <select id="returnsPageSize" class="form-control form-control-sm" data-page-size></select>
+                <div class="rv-pager-nav">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="first">&laquo;</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="prev">&lsaquo;</button>
+                    <span class="rv-pager-status" data-page-status aria-live="polite"></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="next">&rsaquo;</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-page="last">&raquo;</button>
+                </div>
+            </div>
+            <div class="table-responsive" role="region" aria-labelledby="returnsTableTitle" tabindex="0">
+                <table class="table table-sm table-bordered rv-returns">
+                    <thead>
+                        <tr>
+                            <th scope="col" id="resultsPeriodColumn">
+                                {% if request.session.language == 'en' %}Period{% else %}Período{% endif %}
+                            </th>
+                            <th scope="col">
+                                {% if request.session.language == 'en' %}Discrete return{% else %}Retorno discreto{% endif %}
+                            </th>
+                            <th scope="col">
+                                {% if request.session.language == 'en' %}Continuous return{% else %}Retorno contínuo{% endif %}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTable"></tbody>
+                </table>
+            </div>
+        </details>
+    </section>
 </div>
 
 {{ initial_data|json_script:"volatilityInitialData" }}
+{{ screen_defaults|json_script:"volatilityExampleData" }}
 <script>
 (function () {
-    const MIN_PERIODS = 3;
-    const MAX_PERIODS = 100;
+    const core = window.saetoReturnVolatility;
+    const fileApi = window.saetoPriceFile;
+    if (!core || !fileApi) {
+        // Without its module the screen cannot calculate anything: say so instead of
+        // dying on the first line and leaving a table that never fills.
+        console.error('This screen needs saetoReturnVolatility and saetoPriceFile: '
+            + 'the scripts in static/app_teoria/volatility/ did not load '
+            + '(run collectstatic if they answer 404).');
+        document.getElementById('errorSummaryText').textContent =
+            '{% if request.session.language == "en" %}This screen could not load one of its components. Reload the page; if it keeps happening, report it to whoever maintains the system.{% else %}Não foi possível carregar um componente desta tela. Atualize a página; se o problema continuar, avise o responsável pelo sistema.{% endif %}';
+        document.getElementById('goToFirstErrorButton').hidden = true;
+        document.getElementById('errorSummary').hidden = false;
+        document.getElementById('calculateButton').disabled = true;
+        document.getElementById('applyCountButton').disabled = true;
+        return;
+    }
+    // Ranges come from the registry, so the field, the messages and the save
+    // validation cannot drift apart.
+    const limits = {
+        min: Number('{{ limits.min_prices }}') || core.MIN_PRICES,
+        max: Number('{{ limits.max_prices }}') || core.MAX_PRICES,
+    };
+    const MIN_PRICES = limits.min;
+    const MAX_PRICES = limits.max;
     const T = {
         pt: {
-            placeholder: 'Digite o valor',
-            invalidPeriods: `O número de períodos deve ser um número inteiro entre ${MIN_PERIODS} e ${MAX_PERIODS}.`,
-            missingPrice: 'Preencha todos os valores dos ativos.',
-            invalidPrice: 'Os valores dos ativos devem ser maiores que zero.',
+            placeholder: 'Preço',
+            countHint: `De ${MIN_PRICES} a ${MAX_PRICES} preços, do mais antigo para o mais recente.`,
+            COUNT_EMPTY: 'Informe o número de preços (N).',
+            COUNT_NOT_INTEGER: 'O número de preços (N) deve ser um número inteiro.',
+            COUNT_RANGE: `O número de preços (N) deve estar entre ${MIN_PRICES} e ${MAX_PRICES}.`,
+            EMPTY: 'Preencha o preço desta linha.',
+            AMBIGUOUS_SEPARATOR: 'Use um único separador decimal (vírgula ou ponto), sem separador de milhar.',
+            NOT_A_NUMBER: 'Digite apenas números, sem separador de milhar.',
+            NOT_POSITIVE: 'O preço deve ser maior que zero.',
+            SERIES_TOO_SHORT: `A série deve ter de ${MIN_PRICES} a ${MAX_PRICES} preços.`,
+            SERIES_TOO_LONG: `A série deve ter de ${MIN_PRICES} a ${MAX_PRICES} preços.`,
+            errorsOne: 'Corrija 1 linha para calcular.',
+            errorsMany: (total) => `Corrija ${total} linhas para calcular.`,
+            errorRow: (row, text) => `Linha ${row}: ${text}`,
+            errorMore: (total) => `… e mais ${total}.`,
+            goToFirstError: 'Ir para o primeiro erro',
+            pending: (rows, count) => `A tabela tem ${rows} preços e o campo indica ${count}. Use “Aplicar” para ajustar a tabela antes de calcular.`,
+            pendingAction: 'Ajuste a tabela ao número de preços (N) para calcular.',
+            importPending: 'Importe um arquivo com os preços para calcular.',
+            importInvalid: 'A série em memória tem preços a corrigir. Importe o arquivo novamente ou use “Preencher manualmente”.',
+            priceLabel: (row) => `Preço do ativo no período ${row}`,
+            pageStatus: (start, end, total) => `${start}-${end} de ${total}`,
+            pageEmpty: '0 de 0',
+            calculate: 'Calcular',
+            recalculate: 'Recalcular',
+            stale: 'Dados alterados. Recalcule para atualizar.',
+            outputHint: 'Copiar e salvar ficam disponíveis após recalcular.',
+            meta: (prices, returns) => `N = ${prices} preços · n = ${returns} retornos · unidade: por período`,
+            sourceExample: 'Exemplo da ferramenta. Importe um arquivo ou use “Limpar dados” para inserir a sua própria série.',
+            sourceExampleFile: 'Exemplo da ferramenta. Importe um arquivo para usar a sua própria série.',
+            sourceProject: (name) => (name ? `Projeto salvo: ${name}.` : 'Projeto salvo aberto para reexecução.'),
+            sourceUser: 'Série informada por você.',
+            sourceFile: (origin) => `Importado de ${origin}.`,
+            sourceFileEdited: (origin) => `Importado de ${origin} e editado por você.`,
+            badgeExample: 'Exemplo',
+            badgeProject: 'Projeto salvo',
+            badgeUser: 'Meus dados',
+            badgeFile: 'Arquivo',
+            undo: (action) => `Desfazer: ${action}`,
+            undoClear: 'limpar dados',
+            undoExample: 'carregar exemplo',
+            undoRestore: 'restaurar dados salvos',
+            undoResize: 'reduzir a tabela',
+            undoImport: 'importar arquivo',
+            FILE_TOO_LARGE: (mb, limit) => `O arquivo tem ${mb} MB e o limite é ${limit} MB.`,
+            FILE_EMPTY: 'O arquivo está vazio.',
+            FILE_TYPE_REFUSED: (extension) => `Arquivos .${extension} não são lidos. Salve como .xlsx ou CSV e importe novamente.`,
+            FILE_TYPE_UNKNOWN: 'Formato não reconhecido. Use CSV, TXT ou XLSX.',
+            FILE_TOO_MANY_ROWS: (rows, limit) => `O arquivo tem ${rows} linhas e a ferramenta lê até ${limit}. Reduza o arquivo antes de importar.`,
+            FILE_UNREADABLE: 'Não foi possível ler o arquivo. Verifique se ele não está danificado.',
+            FILE_NOT_UTF8: 'O arquivo não está em UTF-8; os acentos podem aparecer trocados. Os números foram lidos normalmente.',
+            XLSX_LOADER_FAILED: 'Não foi possível carregar o leitor de Excel. Verifique a conexão e tente de novo, ou importe o arquivo em CSV.',
+            SHEET_EMPTY: 'A planilha selecionada não tem dados.',
+            CELL_IS_DATE: 'A célula contém uma data, não um preço.',
+            CELL_IS_BOOLEAN: 'A célula contém verdadeiro/falso, não um preço.',
+            CELL_IS_ERROR: 'A célula contém um erro da planilha (por exemplo #DIV/0!).',
+            CELL_FORMULA_WITHOUT_VALUE: 'A célula tem fórmula sem valor salvo. Recalcule e salve a planilha, ou importe uma coluna de valores.',
+            reading: (name) => `Lendo ${name}…`,
+            readingExcel: 'Carregando o leitor de Excel…',
+            previewFile: (name, sheet) => (sheet ? `${name} · planilha “${sheet}”` : name),
+            previewColumnName: (letter, name, sample) =>
+                `${letter}${name ? ' · ' + name : ''}${sample ? ' (' + sample + '…)' : ''}`,
+            previewCounts: (valid, selected) => `${valid} preços válidos em ${selected} linhas selecionadas.`,
+            previewFirstLast: (first, last) => ` Primeiro: ${first} · Último: ${last}.`,
+            previewErrorsOne: 'Corrija 1 linha no arquivo ou ajuste a seleção.',
+            previewErrorsMany: (total) => `Corrija ${total} linhas no arquivo ou ajuste a seleção.`,
+            previewWhere: (line, address) => (address ? `Linha ${line} (${address})` : `Linha ${line}`),
+            previewSkipped: (total) => `… ${total} linhas …`,
+            previewOk: 'preço',
+            delimiterNone: 'Uma coluna (vírgula decimal)',
+            delimiterSemicolon: 'Ponto e vírgula ( ; )',
+            delimiterComma: 'Vírgula ( , )',
+            delimiterTab: 'Tabulação',
+            delimiterPipe: 'Barra vertical ( | )',
+            previewAmbiguous: 'A vírgula pode ser o separador decimal ou separar duas colunas, e as duas leituras dão uma série válida. Esta é a leitura decimal; se o arquivo tiver duas colunas, troque em “Separador”.',
+            saveNeedsChart: 'O gráfico não foi carregado, então salvar o projeto não está disponível. Atualize a página e calcule novamente.',
+            previewCapped: (limit) => ` A ferramenta lê até ${limit} preços por série; ajuste “Da linha” e “Até a linha” para escolher outro trecho.`,
+            previewImported: (count) => `${count} preços aplicados à tabela.`,
+            previewImportedFile: (count) => `${count} preços importados. Use “Calcular”.`,
+            modelFileName: 'modelo-precos',
             discreteReturn: 'Retorno Discreto',
             continuousReturn: 'Retorno Contínuo',
             chartTitle: 'Retornos Discretos vs Contínuos',
+            chartPeriod: (from, to) => `Período ${from} → ${to}`,
             period: 'Período',
-            assetValue: 'Valor do Ativo',
+            assetValue: 'Preço do ativo',
             meanReturn: 'Retorno médio',
             volatility: 'Volatilidade',
             copied: 'Copiado!',
             copyFailed: 'Não foi possível copiar. Selecione a tabela e use Ctrl+C.',
         },
         en: {
-            placeholder: 'Enter the value',
-            invalidPeriods: `The number of periods must be a whole number between ${MIN_PERIODS} and ${MAX_PERIODS}.`,
-            missingPrice: 'Please fill in all asset values.',
-            invalidPrice: 'Asset values must be greater than zero.',
+            placeholder: 'Price',
+            countHint: `From ${MIN_PRICES} to ${MAX_PRICES} prices, from the oldest to the most recent.`,
+            COUNT_EMPTY: 'Enter the number of prices (N).',
+            COUNT_NOT_INTEGER: 'The number of prices (N) must be a whole number.',
+            COUNT_RANGE: `The number of prices (N) must be between ${MIN_PRICES} and ${MAX_PRICES}.`,
+            EMPTY: 'Fill in the price in this row.',
+            AMBIGUOUS_SEPARATOR: 'Use a single decimal separator (comma or dot), with no thousands separator.',
+            NOT_A_NUMBER: 'Enter digits only, with no thousands separator.',
+            NOT_POSITIVE: 'The price must be greater than zero.',
+            SERIES_TOO_SHORT: `The series must have from ${MIN_PRICES} to ${MAX_PRICES} prices.`,
+            SERIES_TOO_LONG: `The series must have from ${MIN_PRICES} to ${MAX_PRICES} prices.`,
+            errorsOne: 'Fix 1 row to calculate.',
+            errorsMany: (total) => `Fix ${total} rows to calculate.`,
+            errorRow: (row, text) => `Row ${row}: ${text}`,
+            errorMore: (total) => `… and ${total} more.`,
+            goToFirstError: 'Go to the first error',
+            pending: (rows, count) => `The table has ${rows} prices and the field says ${count}. Use “Apply” to adjust the table before calculating.`,
+            pendingAction: 'Match the table to the number of prices (N) to calculate.',
+            importPending: 'Import a file with the prices to calculate.',
+            importInvalid: 'The series in memory has prices to fix. Import the file again or use “Fill in manually”.',
+            priceLabel: (row) => `Asset price in period ${row}`,
+            pageStatus: (start, end, total) => `${start}-${end} of ${total}`,
+            pageEmpty: '0 of 0',
+            calculate: 'Calculate',
+            recalculate: 'Recalculate',
+            stale: 'Data changed. Recalculate to update.',
+            outputHint: 'Copy and save become available after recalculating.',
+            meta: (prices, returns) => `N = ${prices} prices · n = ${returns} returns · unit: per period`,
+            sourceExample: 'Tool example. Import a file or use “Clear data” to enter your own series.',
+            sourceExampleFile: 'Tool example. Import a file to use your own series.',
+            sourceProject: (name) => (name ? `Saved project: ${name}.` : 'Saved project opened to re-run.'),
+            sourceUser: 'Series entered by you.',
+            sourceFile: (origin) => `Imported from ${origin}.`,
+            sourceFileEdited: (origin) => `Imported from ${origin} and edited by you.`,
+            badgeExample: 'Example',
+            badgeProject: 'Saved project',
+            badgeUser: 'My data',
+            badgeFile: 'File',
+            undo: (action) => `Undo: ${action}`,
+            undoClear: 'clear data',
+            undoExample: 'load example',
+            undoRestore: 'restore saved data',
+            undoResize: 'shrink the table',
+            undoImport: 'import a file',
+            FILE_TOO_LARGE: (mb, limit) => `The file is ${mb} MB and the limit is ${limit} MB.`,
+            FILE_EMPTY: 'The file is empty.',
+            FILE_TYPE_REFUSED: (extension) => `.${extension} files are not read. Save as .xlsx or CSV and import again.`,
+            FILE_TYPE_UNKNOWN: 'Format not recognised. Use CSV, TXT or XLSX.',
+            FILE_TOO_MANY_ROWS: (rows, limit) => `The file has ${rows} rows and the tool reads up to ${limit}. Trim the file before importing.`,
+            FILE_UNREADABLE: 'The file could not be read. Check whether it is damaged.',
+            FILE_NOT_UTF8: 'The file is not in UTF-8, so accents may look wrong. The numbers were read normally.',
+            XLSX_LOADER_FAILED: 'The Excel reader could not be loaded. Check the connection and try again, or import the file as CSV.',
+            SHEET_EMPTY: 'The selected sheet has no data.',
+            CELL_IS_DATE: 'The cell holds a date, not a price.',
+            CELL_IS_BOOLEAN: 'The cell holds true/false, not a price.',
+            CELL_IS_ERROR: 'The cell holds a spreadsheet error (for example #DIV/0!).',
+            CELL_FORMULA_WITHOUT_VALUE: 'The cell has a formula with no saved result. Recalculate and save the sheet, or import a column of values.',
+            reading: (name) => `Reading ${name}…`,
+            readingExcel: 'Loading the Excel reader…',
+            previewFile: (name, sheet) => (sheet ? `${name} · sheet “${sheet}”` : name),
+            previewColumnName: (letter, name, sample) =>
+                `${letter}${name ? ' · ' + name : ''}${sample ? ' (' + sample + '…)' : ''}`,
+            previewCounts: (valid, selected) => `${valid} valid prices in ${selected} selected rows.`,
+            previewFirstLast: (first, last) => ` First: ${first} · Last: ${last}.`,
+            previewErrorsOne: 'Fix 1 row in the file or adjust the selection.',
+            previewErrorsMany: (total) => `Fix ${total} rows in the file or adjust the selection.`,
+            previewWhere: (line, address) => (address ? `Row ${line} (${address})` : `Row ${line}`),
+            previewSkipped: (total) => `… ${total} rows …`,
+            previewOk: 'price',
+            delimiterNone: 'Single column (decimal comma)',
+            delimiterSemicolon: 'Semicolon ( ; )',
+            delimiterComma: 'Comma ( , )',
+            delimiterTab: 'Tab',
+            delimiterPipe: 'Pipe ( | )',
+            previewAmbiguous: 'The comma can be the decimal separator or separate two columns, and both readings give a valid series. This is the decimal reading; if the file has two columns, switch it in “Separator”.',
+            saveNeedsChart: 'The chart did not load, so saving the project is not available. Reload the page and calculate again.',
+            previewCapped: (limit) => ` The tool reads up to ${limit} prices per series; adjust “From line” and “To line” to pick another stretch.`,
+            previewImported: (count) => `${count} prices applied to the table.`,
+            previewImportedFile: (count) => `${count} prices imported. Use “Calculate”.`,
+            modelFileName: 'price-model',
             discreteReturn: 'Discrete Return',
             continuousReturn: 'Continuous Return',
             chartTitle: 'Discrete vs Continuous Returns',
+            chartPeriod: (from, to) => `Period ${from} → ${to}`,
             period: 'Period',
-            assetValue: 'Asset Value',
+            assetValue: 'Asset price',
             meanReturn: 'Mean return',
             volatility: 'Volatility',
             copied: 'Copied!',
@@ -138,184 +805,1023 @@
     const lang = '{{ request.session.language|default:"pt" }}';
     const t = T[lang] || T.pt;
     const initialData = JSON.parse(document.getElementById('volatilityInitialData').textContent);
+    const exampleData = JSON.parse(document.getElementById('volatilityExampleData').textContent);
+    const savedProjectName = '{{ saved_project_name|escapejs }}';
+    const openedFromProject = {% if is_rerun %}true{% else %}false{% endif %};
 
-    const form = document.getElementById('volatilityForm');
-    const periodsInput = document.getElementById('timeInterval');
-    const inputBody = document.getElementById('inputTable').querySelector('tbody');
-    const inputContainer = document.getElementById('inputTableContainer');
-    const resultsContainer = document.getElementById('resultsContainer');
-    const errorBox = document.getElementById('volatilityError');
-    const saveBtn = document.getElementById('saveProjectButton');
+    const screen = document.getElementById('returnVolatilityScreen');
+    const el = (id) => document.getElementById(id);
+    const form = el('volatilityForm');
+    const countInput = el('priceCount');
+    const countError = el('priceCountError');
+    const inputBody = el('inputTable').querySelector('tbody');
+    const resultsContainer = el('resultsContainer');
+    const resultsBody = el('resultsTable');
+    const errorSummary = el('errorSummary');
+    const calculateBtn = el('calculateButton');
+    const calculateHint = el('calculateHint');
+    const copyBtn = el('copyTableButton');
+    const copyError = el('copyError');
+    const saveBtn = el('saveProjectButton');
+    const undoBtn = el('undoButton');
+    const staleBanner = el('staleBanner');
+    const outputHint = el('outputHint');
 
-    let returnsChart = null;
-    // Inputs and results of the last successful calculation; Save sends exactly this.
-    let lastRun = null;
-
-    const setLastRun = (run) => {
-        lastRun = run;
-        saveBtn.disabled = !run;
+    // The series lives here, as typed, so paging or resizing never loses a value
+    // and an unreadable entry stays on screen until the user corrects it.
+    const state = {
+        mode: 'manual',         // 'manual': N and the table; 'file': the file decides
+        priceTexts: [],
+        rowErrors: new Map(),   // row index -> error code, from the last attempt
+        seriesErrors: [],
+        showErrors: false,      // messages appear after Calculate/Apply, not while typing
+        showCountError: false,
+        page: 1,
+        returnsPage: 1,
+        pageSize: core.DEFAULT_PAGE_SIZE,
+        source: openedFromProject ? 'project' : 'example',
+        sourceDetail: '',       // file, sheet and column a series was imported from
+        lastRun: null,          // inputs and results of the last successful calculation
+        stale: false,           // data changed after that calculation
+        undo: null,
+        chart: null,
+        file: null,             // the file being checked, until "use these prices"
+        fileToken: 0,           // a later file wins: an earlier read is discarded
     };
 
-    const showError = (message) => {
-        errorBox.textContent = message;
-        errorBox.style.display = message ? 'block' : 'none';
-    };
+    const PRICE_PAGERS = ['pricesPager', 'pricesPagerBottom'];
+    const RETURN_PAGERS = ['returnsPager'];
 
+    const trimmed = (value) => (value === undefined || value === null ? '' : String(value)).trim();
+    const show = (node, visible) => { node.hidden = !visible; };
     const percent = (value) => `${(value * 100).toFixed(2)}%`;
+    const asTexts = (prices) => (Array.isArray(prices) ? prices : [])
+        .map(price => (price === undefined || price === null ? '' : String(price)));
+    const isManual = () => state.mode === 'manual';
 
-    const hideResults = () => {
-        setLastRun(null);
-        resultsContainer.style.display = 'none';
-        if (returnsChart) {
-            returnsChart.destroy();
-            returnsChart = null;
-        }
-    };
+    // --- Where the data on screen came from ------------------------------------
 
-    function readPeriods() {
-        const periods = Number(periodsInput.value);
-        if (!Number.isInteger(periods) || periods < MIN_PERIODS || periods > MAX_PERIODS) {
-            return null;
-        }
-        return periods;
-    }
-
-    function priceInputs() {
-        return Array.from(inputBody.querySelectorAll('input'));
-    }
-
-    // Builds one row per period, keeping the values already typed in the rows that stay.
-    function buildTable(periods, prices) {
-        const previous = priceInputs().map(input => input.value);
-        inputBody.innerHTML = '';
-        for (let i = 1; i <= periods; i++) {
-            const row = inputBody.insertRow();
-            row.insertCell().textContent = i;
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.className = 'form-control';
-            input.id = `price_${i}`;
-            input.min = '0';
-            input.step = 'any';
-            input.placeholder = t.placeholder;
-            const value = prices ? prices[i - 1] : previous[i - 1];
-            input.value = value === undefined || value === null ? '' : value;
-            row.insertCell().appendChild(input);
-        }
-        inputContainer.style.display = 'block';
-    }
-
-    function generateTable() {
-        hideResults();
-        const periods = readPeriods();
-        if (periods === null) {
-            showError(t.invalidPeriods);
-            return;
-        }
-        showError('');
-        buildTable(periods);
-    }
-
-    function readPrices() {
-        const prices = [];
-        for (const input of priceInputs()) {
-            if (input.value.trim() === '') {
-                return { error: t.missingPrice };
-            }
-            const price = Number(input.value);
-            if (!Number.isFinite(price)) {
-                return { error: t.missingPrice };
-            }
-            if (price <= 0) {
-                return { error: t.invalidPrice };
-            }
-            prices.push(price);
-        }
-        return { prices };
-    }
-
-    const mean = (values) => values.reduce((acc, value) => acc + value, 0) / values.length;
-
-    // Sample standard deviation (n − 1).
-    function sampleStd(values) {
-        const m = mean(values);
-        return Math.sqrt(values.reduce((acc, value) => acc + (value - m) ** 2, 0) / (values.length - 1));
-    }
-
-    function calculateVolatility() {
-        hideResults();
-        const { prices, error } = readPrices();
-        if (error) {
-            showError(error);
-            return;
-        }
-        if (prices.length < MIN_PERIODS) {
-            showError(t.invalidPeriods);
-            return;
-        }
-        showError('');
-
-        const discreteReturns = [];
-        const continuousReturns = [];
-        for (let i = 1; i < prices.length; i++) {
-            discreteReturns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
-            continuousReturns.push(Math.log(prices[i] / prices[i - 1]));
-        }
-
-        const results = {
-            discrete_returns: discreteReturns,
-            continuous_returns: continuousReturns,
-            mean_discrete: mean(discreteReturns),
-            mean_continuous: mean(continuousReturns),
-            volatility_discrete: sampleStd(discreteReturns),
-            volatility_continuous: sampleStd(continuousReturns),
+    function renderSource() {
+        const kinds = {
+            example: ['badgeExample', 'rv-badge',
+                      isManual() ? t.sourceExample : t.sourceExampleFile],
+            project: ['badgeProject', 'rv-badge rv-badge-project', t.sourceProject(savedProjectName)],
+            file: ['badgeFile', 'rv-badge rv-badge-file', t.sourceFile(state.sourceDetail)],
+            user: ['badgeUser', 'rv-badge rv-badge-user',
+                   state.sourceDetail ? t.sourceFileEdited(state.sourceDetail) : t.sourceUser],
         };
+        const [label, className, description] = kinds[state.source] || kinds.user;
+        const badge = el('dataSourceBadge');
+        badge.textContent = t[label];
+        badge.className = className;
+        el('dataSourceText').textContent = description;
+        // The example is one click away again once the data on screen is not it,
+        // and only where it can be seen: in file mode there is no table to fill.
+        show(el('exampleLink'), state.source !== 'example' && isManual());
+    }
 
-        // Each return goes from one period to the next, so it is labelled "1 → 2".
-        const labels = discreteReturns.map((_, i) => `${i + 1} → ${i + 2}`);
-        const resultsTable = document.getElementById('resultsTable');
-        resultsTable.innerHTML = '';
-        labels.forEach((label, i) => {
-            const row = resultsTable.insertRow();
-            row.insertCell().textContent = label;
-            row.insertCell().textContent = percent(discreteReturns[i]);
-            row.insertCell().textContent = percent(continuousReturns[i]);
+    /** An edit makes the series the user's own: the example is never shown as theirs. */
+    function markEdited() {
+        if (state.source !== 'user') {
+            state.source = 'user';
+            renderSource();
+        }
+    }
+
+    // --- Results that no longer match the data ---------------------------------
+
+    function markStale() {
+        if (state.lastRun && !state.stale) {
+            state.stale = true;
+            renderOutputState();
+        }
+    }
+
+    function renderOutputState() {
+        const hasRun = Boolean(state.lastRun);
+        const outdated = hasRun && state.stale;
+        show(resultsContainer, hasRun);
+        staleBanner.textContent = t.stale;
+        show(staleBanner, outdated);
+        // Saving sends the chart image with the numbers, so a chart that never
+        // loaded is said to block it instead of leaving a button that does nothing.
+        const chartMissing = hasRun && !state.chart;
+        outputHint.textContent = outdated ? t.outputHint : t.saveNeedsChart;
+        show(outputHint, outdated || chartMissing);
+        // A result that no longer matches the data can be neither copied nor saved.
+        copyBtn.disabled = !hasRun || outdated;
+        saveBtn.disabled = !hasRun || outdated || chartMissing;
+        calculateBtn.textContent = hasRun ? t.recalculate : t.calculate;
+        calculateBtn.classList.toggle('btn-warning', outdated);
+        calculateBtn.classList.toggle('btn-primary', !outdated);
+    }
+
+    // --- Number of prices (N) and the pending table ----------------------------
+
+    const countResult = () => core.parseCount(countInput.value, limits);
+
+    function renderCountState() {
+        const parsed = countResult();
+        const invalid = Boolean(parsed.code);
+        countInput.setAttribute('aria-invalid', invalid ? 'true' : 'false');
+        countError.textContent = invalid ? message(parsed.code) : '';
+        show(countError, invalid && state.showCountError);
+
+        const pendingText = el('pendingText');
+        if (!isManual()) {
+            // N and the series come from the file, so there is nothing to adjust:
+            // what Calculate waits for is an import, not a number.
+            show(el('pendingBadge'), false);
+            show(pendingText, false);
+            const ready = state.source !== 'example'
+                && core.validateSeries(state.priceTexts, limits).valid;
+            calculateBtn.disabled = !ready;
+            calculateHint.textContent =
+                state.source === 'example' ? t.importPending : t.importInvalid;
+            show(calculateHint, !ready);
+            return;
+        }
+
+        const mismatch = !invalid && parsed.value !== state.priceTexts.length;
+        show(el('pendingBadge'), invalid || mismatch);
+        if (mismatch) {
+            pendingText.textContent = t.pending(state.priceTexts.length, parsed.value);
+        }
+        show(pendingText, mismatch);
+
+        // Calculating a series that does not match N would hide which one was used.
+        calculateBtn.disabled = invalid || mismatch;
+        calculateHint.textContent = t.pendingAction;
+        show(calculateHint, mismatch || (invalid && state.showCountError));
+    }
+
+    // --- Check of the entry ----------------------------------------------------
+
+    function renderCheck() {
+        const total = state.priceTexts.length;
+        el('checkPrices').textContent = total;
+        el('checkReturns').textContent = Math.max(total - 1, 0);
+        el('checkFirst').textContent = trimmed(state.priceTexts[0]) || '—';
+        el('checkLast').textContent = total > 1 ? (trimmed(state.priceTexts[total - 1]) || '—') : '—';
+    }
+
+    // --- Prices table, one page at a time --------------------------------------
+
+    function renderPricesTable() {
+        const total = state.priceTexts.length;
+        const { page, start, end } = core.pageRange(state.page, total, state.pageSize);
+        state.page = page;
+        const rows = document.createDocumentFragment();
+        for (let index = start; index < end; index++) {
+            const row = document.createElement('tr');
+            const header = document.createElement('th');
+            header.scope = 'row';
+            header.className = 'rv-row-index';
+            header.textContent = index + 1;
+            row.appendChild(header);
+
+            const cell = document.createElement('td');
+            const errorId = `priceError_${index + 1}`;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.inputMode = 'decimal';
+            input.autocomplete = 'off';
+            input.className = 'form-control form-control-sm';
+            input.id = `price_${index + 1}`;
+            input.dataset.index = String(index);
+            input.placeholder = t.placeholder;
+            input.value = state.priceTexts[index] === undefined ? '' : state.priceTexts[index];
+            input.setAttribute('aria-label', t.priceLabel(index + 1));
+            input.setAttribute('aria-describedby', errorId);
+            cell.appendChild(input);
+
+            const code = state.showErrors ? state.rowErrors.get(index) : undefined;
+            const error = document.createElement('p');
+            error.className = 'rv-row-error';
+            error.id = errorId;
+            error.textContent = code ? message(code) : '';
+            error.hidden = !code;
+            input.setAttribute('aria-invalid', code ? 'true' : 'false');
+            cell.appendChild(error);
+
+            row.appendChild(cell);
+            rows.appendChild(row);
+        }
+        inputBody.innerHTML = '';
+        inputBody.appendChild(rows);
+        renderPagers(PRICE_PAGERS, state.page, total);
+    }
+
+    function renderPagers(ids, page, total) {
+        const { start, end } = core.pageRange(page, total, state.pageSize);
+        const pages = core.pageCount(total, state.pageSize);
+        ids.forEach(id => {
+            const pager = el(id);
+            // A series that fits on one page has nothing to page through.
+            show(pager, pages > 1);
+            pager.querySelector('[data-page-status]').textContent =
+                total ? t.pageStatus(start + 1, end, total) : t.pageEmpty;
+            pager.querySelector('[data-page="first"]').disabled = page <= 1;
+            pager.querySelector('[data-page="prev"]').disabled = page <= 1;
+            pager.querySelector('[data-page="next"]').disabled = page >= pages;
+            pager.querySelector('[data-page="last"]').disabled = page >= pages;
+            const size = pager.querySelector('[data-page-size]');
+            if (size) {
+                size.value = String(state.pageSize);
+            }
         });
-        document.getElementById('meanDiscrete').textContent = percent(results.mean_discrete);
-        document.getElementById('meanContinuous').textContent = percent(results.mean_continuous);
-        document.getElementById('volatilityDiscrete').textContent = percent(results.volatility_discrete);
-        document.getElementById('volatilityContinuous').textContent = percent(results.volatility_continuous);
-        resultsContainer.style.display = 'block';
+    }
 
-        returnsChart = new Chart(document.getElementById('returnsChart').getContext('2d'), {
+    // --- Error summary ---------------------------------------------------------
+
+    const MAX_LISTED_ERRORS = 5;
+
+    function renderErrorSummary() {
+        const errors = state.showErrors ? [...state.rowErrors.entries()].sort((a, b) => a[0] - b[0]) : [];
+        const seriesErrors = state.showErrors ? state.seriesErrors : [];
+        show(errorSummary, errors.length > 0 || seriesErrors.length > 0);
+        if (errorSummary.hidden) {
+            return;
+        }
+        el('errorSummaryText').textContent = seriesErrors.length
+            ? message(seriesErrors[0].code)
+            : (errors.length === 1 ? t.errorsOne : t.errorsMany(errors.length));
+        const list = el('errorSummaryList');
+        list.innerHTML = '';
+        errors.slice(0, MAX_LISTED_ERRORS).forEach(([index, code]) => {
+            const item = document.createElement('li');
+            item.textContent = t.errorRow(index + 1, message(code));
+            list.appendChild(item);
+        });
+        if (errors.length > MAX_LISTED_ERRORS) {
+            const item = document.createElement('li');
+            item.textContent = t.errorMore(errors.length - MAX_LISTED_ERRORS);
+            list.appendChild(item);
+        }
+        const goTo = el('goToFirstErrorButton');
+        goTo.textContent = t.goToFirstError;
+        show(goTo, errors.length > 0 && isManual());
+    }
+
+    /** Opens the page that holds a row and puts the cursor in it. */
+    function goToRow(index) {
+        state.page = core.pageOfIndex(index, state.pageSize);
+        renderPricesTable();
+        const input = el(`price_${index + 1}`);
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }
+
+    function goToFirstError() {
+        if (!isManual()) {
+            return;   // in file mode the rows are off screen: the summary guides
+        }
+        const first = [...state.rowErrors.keys()].sort((a, b) => a - b)[0];
+        if (first !== undefined) {
+            goToRow(first);
+        }
+    }
+
+    // --- Results ---------------------------------------------------------------
+
+    function renderReturnsTable() {
+        resultsBody.innerHTML = '';
+        if (!state.lastRun) {
+            renderPagers(RETURN_PAGERS, 1, 0);
+            return;
+        }
+        const { discrete_returns: discrete, continuous_returns: continuous } = state.lastRun.results;
+        const total = discrete.length;
+        const { page, start, end } = core.pageRange(state.returnsPage, total, state.pageSize);
+        state.returnsPage = page;
+        const rows = document.createDocumentFragment();
+        for (let index = start; index < end; index++) {
+            const row = document.createElement('tr');
+            // Each return goes from one period to the next, so it is labelled "1 → 2".
+            [`${index + 1} → ${index + 2}`, percent(discrete[index]), percent(continuous[index])]
+                .forEach(value => {
+                    const cell = document.createElement('td');
+                    cell.textContent = value;
+                    row.appendChild(cell);
+                });
+            rows.appendChild(row);
+        }
+        resultsBody.appendChild(rows);
+        renderPagers(RETURN_PAGERS, state.returnsPage, total);
+    }
+
+    function renderSummary() {
+        if (!state.lastRun) {
+            return;
+        }
+        const r = state.lastRun.results;
+        el('meanDiscrete').textContent = percent(r.mean_discrete);
+        el('meanContinuous').textContent = percent(r.mean_continuous);
+        el('volatilityDiscrete').textContent = percent(r.volatility_discrete);
+        el('volatilityContinuous').textContent = percent(r.volatility_continuous);
+        el('resultsMeta').textContent =
+            t.meta(state.lastRun.parameters.prices.length, r.discrete_returns.length);
+    }
+
+    function renderChart() {
+        if (state.chart) {
+            state.chart.destroy();
+            state.chart = null;
+        }
+        if (!state.lastRun || typeof Chart === 'undefined') {
+            return;
+        }
+        const { discrete_returns: discrete, continuous_returns: continuous } = state.lastRun.results;
+        const labels = discrete.map((_, i) => `${i + 1} → ${i + 2}`);
+        // A long series drops the markers and the animation; the numbers and the
+        // export stay exactly the same.
+        const dense = discrete.length > 120;
+        const reducedMotion = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const line = (label, data, color) => ({
+            label: label,
+            data: data.map(value => value * 100),
+            borderColor: color,
+            pointRadius: dense ? 0 : 3,
+            borderWidth: dense ? 1.5 : 2,
+            tension: 0.1,
+        });
+        state.chart = new Chart(el('returnsChart').getContext('2d'), {
             type: 'line',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: t.discreteReturn,
-                    data: discreteReturns.map(r => r * 100),
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                }, {
-                    label: t.continuousReturn,
-                    data: continuousReturns.map(r => r * 100),
-                    borderColor: 'rgb(255, 99, 132)',
-                    tension: 0.1,
-                }],
+                datasets: [
+                    line(t.discreteReturn, discrete, 'rgb(75, 192, 192)'),
+                    line(t.continuousReturn, continuous, 'rgb(255, 99, 132)'),
+                ],
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
+                animation: (dense || reducedMotion) ? false : undefined,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { position: 'top' },
                     title: { display: true, text: t.chartTitle },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => t.chartPeriod(items[0].dataIndex + 1, items[0].dataIndex + 2),
+                            label: (item) => `${item.dataset.label}: ${item.parsed.y.toFixed(2)}%`,
+                        },
+                    },
                 },
                 scales: {
+                    x: { ticks: { autoSkip: true, maxTicksLimit: dense ? 12 : 25, maxRotation: 0 } },
                     y: { ticks: { callback: value => value.toFixed(2) + '%' } },
                 },
             },
         });
+    }
 
-        setLastRun({ parameters: { periods: prices.length, prices }, results });
+    function renderData() {
+        renderCheck();
+        renderCountState();
+        renderPricesTable();
+        renderErrorSummary();
+        show(undoBtn, Boolean(state.undo));
+        if (state.undo) {
+            undoBtn.textContent = t.undo(state.undo.action);
+        }
+    }
+
+    // --- Choosing how the prices are entered -----------------------------------
+    // One way at a time: a file (N and the table come from it, so neither is shown)
+    // or typing (N and the table are the entry, so the import block steps aside).
+    // Switching keeps the series in memory: nothing typed or imported is lost.
+
+    function renderMode() {
+        const manual = isManual();
+        el('dataModeManual').checked = manual;
+        el('dataModeFile').checked = !manual;
+        screen.querySelectorAll('.rv-mode-option').forEach(option => {
+            option.classList.toggle('rv-mode-active', option.querySelector('input').checked);
+        });
+        show(el('importSection'), !manual);
+        show(form, manual);
+        show(el('manualTable'), manual);
+        // Both act on the table, which is not on screen in file mode.
+        show(el('clearButton'), manual);
+        const restore = el('restoreButton');
+        if (restore) {
+            show(restore, manual);
+        }
+        renderSource();
+        renderData();
+    }
+
+    function setMode(mode) {
+        if (state.mode === mode) {
+            return;
+        }
+        state.mode = mode;
+        renderMode();
+        (isManual() ? countInput : fileInput).focus();
+    }
+
+    // --- Replacing the series, with one step of undo ---------------------------
+
+    function snapshot(action) {
+        state.undo = {
+            action: action,
+            priceTexts: state.priceTexts.slice(),
+            source: state.source,
+            sourceDetail: state.sourceDetail,
+        };
+    }
+
+    function applySeries(texts, source, detail) {
+        state.priceTexts = texts.slice();
+        countInput.value = String(texts.length);
+        state.rowErrors = new Map();
+        state.seriesErrors = [];
+        state.showErrors = false;
+        state.showCountError = false;
+        state.page = 1;
+        // Where the data came from travels with it, except when it is replaced.
+        state.sourceDetail = detail === undefined ? '' : detail;
+        if (source) {
+            state.source = source;
+            renderSource();
+        } else {
+            markEdited();
+        }
+        markStale();
+        renderData();
+    }
+
+    function undoLast() {
+        const undo = state.undo;
+        if (!undo) {
+            return;
+        }
+        state.undo = null;
+        // N follows the restored series, so undo never leaves the table pending.
+        applySeries(undo.priceTexts, undo.source, undo.sourceDetail);
+        countInput.focus();
+    }
+
+    // --- Actions ---------------------------------------------------------------
+
+    /** Applies N to the table, keeping the prices of the rows that remain. */
+    function applyCount() {
+        state.showCountError = true;
+        const parsed = countResult();
+        if (parsed.code) {
+            renderCountState();
+            countInput.focus();
+            return;
+        }
+        const target = parsed.value;
+        if (target === state.priceTexts.length) {
+            renderData();
+            return;
+        }
+        // Shrinking can drop prices that were already typed, so it can be undone.
+        if (state.priceTexts.slice(target).some(value => trimmed(value) !== '')) {
+            snapshot(t.undoResize);
+        }
+        const texts = state.priceTexts.slice(0, target);
+        while (texts.length < target) {
+            texts.push('');
+        }
+        state.priceTexts = texts;
+        state.rowErrors = new Map([...state.rowErrors].filter(([index]) => index < target));
+        markEdited();
+        markStale();
+        // Continue typing where the series still has gaps.
+        const firstEmpty = state.priceTexts.findIndex(value => trimmed(value) === '');
+        state.page = firstEmpty >= 0 ? core.pageOfIndex(firstEmpty, state.pageSize) : 1;
+        renderData();
+        const input = firstEmpty >= 0 ? el(`price_${firstEmpty + 1}`) : null;
+        if (input) {
+            input.focus();
+        }
+    }
+
+    function calculate() {
+        state.showCountError = true;
+        state.showErrors = true;
+        const count = countResult();
+        if (count.code) {
+            renderData();
+            if (isManual()) {
+                countInput.focus();
+            }
+            return;
+        }
+        if (count.value !== state.priceTexts.length) {
+            renderData();
+            if (isManual()) {
+                el('applyCountButton').focus();
+            }
+            return;
+        }
+        const check = core.validateSeries(state.priceTexts, limits);
+        state.rowErrors = new Map(check.rowErrors.map(error => [error.index, error.code]));
+        state.seriesErrors = check.seriesErrors;
+        if (!check.valid) {
+            renderData();
+            goToFirstError();
+            return;
+        }
+        state.showErrors = false;
+        // Save sends exactly this: the series calculated, never the fields on screen.
+        state.lastRun = {
+            parameters: { periods: check.prices.length, prices: check.prices },
+            results: core.computeReturns(check.prices),
+        };
+        state.stale = false;
+        state.returnsPage = 1;
+        show(copyError, false);
+        renderData();
+        renderOutputState();
+        renderSummary();
+        renderReturnsTable();
+        renderChart();
+        // The chart exists only now, and saving depends on it.
+        renderOutputState();
+        el('resultsTitle').focus();
+    }
+
+    // --- Importing a file -------------------------------------------------------
+    // The file is read in the browser; nothing is uploaded. The series on screen is
+    // replaced only when the user accepts the preview, and that replacement can be
+    // undone like any other.
+
+    // Pinned by hash: the browser refuses the script if the file ever changes.
+    const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    const SHEETJS_INTEGRITY = 'sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';
+
+    /** The Excel reader is fetched once, and only when a spreadsheet is opened. */
+    function loadSheetJs() {
+        if (window.XLSX) {
+            return Promise.resolve(window.XLSX);
+        }
+        if (!window.saetoSheetJs) {
+            window.saetoSheetJs = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = SHEETJS_URL;
+                script.integrity = SHEETJS_INTEGRITY;
+                script.crossOrigin = 'anonymous';
+                script.addEventListener('load', () => {
+                    if (window.XLSX) {
+                        resolve(window.XLSX);
+                    } else {
+                        window.saetoSheetJs = null;
+                        reject(new Error('XLSX is missing after loading the reader'));
+                    }
+                });
+                script.addEventListener('error', () => {
+                    window.saetoSheetJs = null;
+                    reject(new Error('the Excel reader could not be loaded'));
+                });
+                document.head.appendChild(script);
+            });
+        }
+        return window.saetoSheetJs;
+    }
+
+    const importError = el('importError');
+    const importStatus = el('importStatus');
+    const importPreview = el('importPreview');
+    const fileInput = el('priceFileInput');
+    const usePricesBtn = el('usePricesButton');
+
+    function message(code, params) {
+        const entry = t[code];
+        return typeof entry === 'function' ? entry.apply(null, params || []) : (entry || code);
+    }
+
+    function showImportError(code, params) {
+        importError.textContent = message(code, params);
+        show(importError, true);
+    }
+
+    function setImportStatus(value) {
+        importStatus.textContent = value || '';
+        show(importStatus, Boolean(value));
+    }
+
+    async function readCsvFile(file) {
+        const buffer = await file.arrayBuffer();
+        let content;
+        let warning = '';
+        try {
+            content = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+        } catch (error) {
+            // Not UTF-8: read it as the encoding Excel writes by default and say so.
+            content = new TextDecoder('windows-1252').decode(buffer);
+            warning = 'FILE_NOT_UTF8';
+        }
+        const read = fileApi.readDelimitedText(content);
+        if (read.code) {
+            return { code: read.code, params: [read.rows, read.limit] };
+        }
+        return {
+            warning: warning,
+            // Kept so the separator can be changed without reading the file again.
+            text: { content: content, delimiter: read.delimiter, ambiguous: read.ambiguous },
+            sheets: [{ name: '', rows: read.rows, firstLine: read.firstLine, firstColumn: 0 }],
+        };
+    }
+
+    async function readExcelFile(file) {
+        let XLSX;
+        try {
+            setImportStatus(t.readingExcel);
+            XLSX = await loadSheetJs();
+        } catch (error) {
+            console.error('Excel reader:', error);
+            return { code: 'XLSX_LOADER_FAILED' };
+        }
+        // `sheetStubs` keeps the cells the reader would otherwise drop, which is how
+        // a formula with no stored result can be named instead of read as a blank.
+        const book = XLSX.read(new Uint8Array(await file.arrayBuffer()), {
+            type: 'array', cellDates: true, cellFormula: true, sheetStubs: true, cellStyles: false,
+        });
+        const sheets = [];
+        for (const name of book.SheetNames || []) {
+            const read = fileApi.readWorksheet(book.Sheets[name]);
+            if (read.code) {
+                return { code: read.code, params: [read.rows, read.limit] };
+            }
+            if (read.rows.length) {
+                sheets.push({
+                    name: name, rows: read.rows,
+                    firstLine: read.firstLine, firstColumn: read.firstColumn || 0,
+                });
+            }
+        }
+        return { sheets: sheets };
+    }
+
+    async function readChosenFile(file) {
+        if (!file) {
+            return;
+        }
+        show(importError, false);
+        closePreview({ keepInput: true });
+        const inspection = fileApi.inspectFile(file);
+        if (inspection.code === 'FILE_TOO_LARGE') {
+            const megabyte = 1024 * 1024;
+            showImportError('FILE_TOO_LARGE',
+                [(file.size / megabyte).toFixed(1), Math.round(fileApi.MAX_FILE_BYTES / megabyte)]);
+            return;
+        }
+        if (inspection.code) {
+            showImportError(inspection.code, [inspection.extension]);
+            return;
+        }
+
+        const token = ++state.fileToken;
+        setImportStatus(t.reading(file.name));
+        let result;
+        try {
+            result = inspection.reader === 'excel' ? await readExcelFile(file) : await readCsvFile(file);
+        } catch (error) {
+            console.error('Import failed:', error);
+            result = { code: 'FILE_UNREADABLE' };
+        }
+        // A file chosen while this one was being read owns the screen now.
+        if (token !== state.fileToken) {
+            return;
+        }
+        setImportStatus('');
+        if (result.code) {
+            showImportError(result.code, result.params);
+            return;
+        }
+        if (!result.sheets.length) {
+            showImportError('SHEET_EMPTY');
+            return;
+        }
+        if (result.warning) {
+            showImportError(result.warning);
+        }
+        openPreview(file.name, result.sheets, result.text);
+    }
+
+    function openPreview(fileName, sheets, source) {
+        state.file = {
+            name: fileName, sheets: sheets, sheetIndex: 0,
+            // A spreadsheet has columns already; only text has a separator to choose.
+            content: source ? source.content : null,
+            delimiter: source ? (source.delimiter || '') : '',
+            ambiguous: Boolean(source && source.ambiguous),
+        };
+        configureSheet(firstSheetWithPrices(sheets));
+        fillSheetControl();
+        fillDelimiterControl();
+        renderPreview();
+        show(importPreview, true);
+        el('previewTitle').focus();
+    }
+
+    /** The columns of a sheet, described once per header choice and kept. */
+    function columnsOf(sheet, hasHeader) {
+        const key = hasHeader ? 'header' : 'plain';
+        sheet.described = sheet.described || {};
+        if (!sheet.described[key]) {
+            sheet.described[key] = fileApi.describeColumns(sheet.rows, hasHeader, sheet.firstColumn);
+        }
+        return sheet.described[key];
+    }
+
+    const lastLineOf = (sheet) => sheet.firstLine + sheet.rows.length - 1;
+
+    /** Header, price column and range a sheet suggests on its own, computed once. */
+    function sheetSettings(sheet) {
+        if (sheet.settings) {
+            return sheet.settings;
+        }
+        const hasHeader = fileApi.hasHeaderRow(sheet.rows);
+        const columns = columnsOf(sheet, hasHeader);
+        const suggested = fileApi.suggestColumn(columns);
+        const firstUsable = columns.find(column => column.filled > 0);
+        const column = suggested === null ? (firstUsable ? firstUsable.index : 0) : suggested;
+        const from = sheet.firstLine + (hasHeader ? 1 : 0);
+        sheet.settings = {
+            hasHeader: hasHeader,
+            column: column,
+            numeric: columns[column] ? columns[column].numeric : 0,
+            from: from,
+            // A longer file opens on a range the tool can read, in fields the user
+            // can change, instead of on a selection that refuses to be used.
+            to: Math.min(lastLineOf(sheet), from + MAX_PRICES - 1),
+            reversed: false,
+        };
+        return sheet.settings;
+    }
+
+    function configureSheet(index) {
+        const file = state.file;
+        file.sheetIndex = index;
+        // A copy: the suggestion of the sheet is kept as it was first computed.
+        Object.assign(file, sheetSettings(file.sheets[index]));
+    }
+
+    const DELIMITERS = [
+        ['', 'delimiterNone'], [';', 'delimiterSemicolon'], [',', 'delimiterComma'],
+        ['\t', 'delimiterTab'], ['|', 'delimiterPipe'],
+    ];
+
+    function fillDelimiterControl() {
+        const file = state.file;
+        show(el('previewDelimiterField'), file.content !== null);
+        if (file.content === null) {
+            return;
+        }
+        const select = el('previewDelimiter');
+        select.innerHTML = '';
+        DELIMITERS.forEach(([value, key]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = t[key];
+            select.appendChild(option);
+        });
+        select.value = file.delimiter;
+    }
+
+    /** Reads the same text again, split the way the user says. */
+    function applyDelimiter(delimiter) {
+        const file = state.file;
+        if (!file || file.content === null) {
+            return;
+        }
+        const read = fileApi.readDelimitedText(file.content, { delimiter: delimiter });
+        if (read.code) {
+            showImportError(read.code, [read.rows, read.limit]);
+            return;
+        }
+        file.delimiter = delimiter;
+        file.sheets = [{ name: '', rows: read.rows, firstLine: read.firstLine, firstColumn: 0 }];
+        configureSheet(0);
+        renderPreview();
+    }
+
+    /** A workbook often opens on a cover or a summary: start where a series is. */
+    function firstSheetWithPrices(sheets) {
+        const found = sheets.findIndex(sheet => sheetSettings(sheet).numeric >= MIN_PRICES);
+        return found === -1 ? 0 : found;
+    }
+
+    function fillSheetControl() {
+        const file = state.file;
+        const select = el('previewSheet');
+        select.innerHTML = '';
+        file.sheets.forEach((sheet, index) => {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = sheet.name || '—';
+            select.appendChild(option);
+        });
+        select.value = String(file.sheetIndex);
+        // One usable sheet is simply used, and its name is shown with the file.
+        show(el('previewSheetField'), file.sheets.length > 1);
+    }
+
+    /** The prices the current choices select, judged by the shared rules. */
+    function previewSelection() {
+        const file = state.file;
+        const sheet = file.sheets[file.sheetIndex];
+        const entries = fileApi.columnEntries(sheet.rows, {
+            column: file.column,
+            hasHeader: file.hasHeader,
+            from: file.from - sheet.firstLine + 1,
+            to: file.to - sheet.firstLine + 1,
+            reversed: file.reversed,
+            firstLine: sheet.firstLine,
+            firstColumn: sheet.firstColumn,
+        });
+        const series = fileApi.seriesFromEntries(entries);
+        const checked = core.validateSeries(series.texts, limits);
+        const errors = new Map(checked.rowErrors.map(error => [error.index, error.code]));
+        // A date, a true/false or a formula with no result is named for what it is.
+        series.issues.forEach(issue => errors.set(issue.index, issue.code));
+        return { entries: entries, texts: series.texts, checked: checked, errors: errors };
+    }
+
+    // A spreadsheet cell is named as the user sees it ("Preços, B18"); a CSV by line.
+    const whereLabel = (entry, sheetName) =>
+        (sheetName ? `${sheetName}, ${entry.address}` : t.previewWhere(entry.line, ''));
+
+    function renderPreview() {
+        const file = state.file;
+        if (!file) {
+            return;
+        }
+        const sheet = file.sheets[file.sheetIndex];
+        el('previewFile').textContent = t.previewFile(file.name, sheet.name);
+
+        const columns = columnsOf(sheet, file.hasHeader);
+        const columnSelect = el('previewColumn');
+        columnSelect.innerHTML = '';
+        columns.forEach(column => {
+            const option = document.createElement('option');
+            option.value = String(column.index);
+            option.textContent = t.previewColumnName(column.letter, column.name, column.sample.join(', '));
+            columnSelect.appendChild(option);
+        });
+        columnSelect.value = String(file.column);
+        el('previewHeader').checked = Boolean(file.hasHeader);
+        el('previewReverse').checked = Boolean(file.reversed);
+        const firstLine = sheet.firstLine;
+        const lastLine = lastLineOf(sheet);
+        const ambiguous = el('previewAmbiguous');
+        ambiguous.textContent = t.previewAmbiguous;
+        // Said while the decimal reading is the one on screen, not after the swap.
+        show(ambiguous, Boolean(file.ambiguous) && file.delimiter === '');
+        [['previewFrom', file.from], ['previewTo', file.to]].forEach(([id, value]) => {
+            const input = el(id);
+            input.min = String(firstLine);
+            input.max = String(lastLine);
+            input.value = String(value);
+        });
+
+        const selection = previewSelection();
+        const valid = selection.texts.length - selection.errors.size;
+        let counts = t.previewCounts(valid, selection.entries.length);
+        if (selection.checked.valid && selection.checked.prices.length) {
+            const prices = selection.checked.prices;
+            counts += t.previewFirstLast(prices[0], prices[prices.length - 1]);
+        }
+        if (file.to < lastLine && selection.entries.length >= MAX_PRICES) {
+            counts += t.previewCapped(MAX_PRICES);
+        }
+        el('previewCounts').textContent = counts;
+        // What “Use these prices” applies is exactly what was judged here.
+        file.selection = selection;
+
+        renderPreviewRows(selection, sheet.name);
+        renderPreviewErrors(selection, sheet.name);
+        usePricesBtn.disabled = selection.errors.size > 0
+            || selection.checked.seriesErrors.length > 0
+            || selection.texts.length === 0;
+    }
+
+    const PREVIEW_EDGE = 3;
+
+    function renderPreviewRows(selection, sheetName) {
+        const body = el('previewRows');
+        body.innerHTML = '';
+        const total = selection.entries.length;
+        const shown = total <= PREVIEW_EDGE * 2
+            ? selection.entries.map((entry, index) => index)
+            : [0, 1, 2, -1, total - 3, total - 2, total - 1];
+        shown.forEach(index => {
+            const row = body.insertRow();
+            if (index === -1) {
+                const cell = row.insertCell();
+                cell.colSpan = 3;
+                cell.textContent = t.previewSkipped(total - PREVIEW_EDGE * 2);
+                row.className = 'rv-preview-skip';
+                return;
+            }
+            const entry = selection.entries[index];
+            const code = selection.errors.get(index);
+            row.insertCell().textContent = whereLabel(entry, sheetName);
+            row.insertCell().textContent = entry.cell.raw || '—';
+            const status = row.insertCell();
+            status.textContent = code ? message(code) : t.previewOk;
+            if (code) {
+                status.className = 'rv-row-error';
+            }
+        });
+    }
+
+    function renderPreviewErrors(selection, sheetName) {
+        const list = el('previewErrors');
+        list.innerHTML = '';
+        const errors = [...selection.errors.entries()].sort((a, b) => a[0] - b[0]);
+        const series = selection.checked.seriesErrors;
+        show(list, errors.length > 0 || series.length > 0);
+        if (list.hidden) {
+            return;
+        }
+        const add = (content) => {
+            const item = document.createElement('li');
+            item.textContent = content;
+            list.appendChild(item);
+        };
+        if (series.length) {
+            add(message(series[0].code));
+        }
+        if (errors.length) {
+            add(errors.length === 1 ? t.previewErrorsOne : t.previewErrorsMany(errors.length));
+            errors.slice(0, MAX_LISTED_ERRORS).forEach(([index, code]) => {
+                add(`${whereLabel(selection.entries[index], sheetName)}: ${message(code)}`);
+            });
+            if (errors.length > MAX_LISTED_ERRORS) {
+                add(t.errorMore(errors.length - MAX_LISTED_ERRORS));
+            }
+        }
+    }
+
+    function usePrices() {
+        const file = state.file;
+        const selection = file && file.selection;
+        if (!selection || usePricesBtn.disabled || !selection.checked.valid) {
+            return;
+        }
+        const sheet = file.sheets[file.sheetIndex];
+        const column = columnsOf(sheet, file.hasHeader)[file.column];
+        const origin = [file.name, sheet.name, column && (column.name || column.letter)]
+            .filter(Boolean).join(' · ');
+        snapshot(t.undoImport);
+        applySeries(selection.texts, 'file', origin);
+        closePreview();
+        setImportStatus(isManual()
+            ? t.previewImported(selection.texts.length)
+            : t.previewImportedFile(selection.texts.length));
+        calculateBtn.focus();
+    }
+
+    function closePreview(options) {
+        state.file = null;
+        show(importPreview, false);
+        if (!options || !options.keepInput) {
+            // Clearing the control lets the same file be chosen again after a fix.
+            fileInput.value = '';
+        }
+    }
+
+    function downloadBlob(blob, name) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }
+
+    async function downloadModel(format) {
+        show(importError, false);
+        if (format === 'csv') {
+            // The BOM makes Excel open the accented header as UTF-8.
+            const content = '﻿' + fileApi.modelCsv(lang);
+            downloadBlob(new Blob([content], { type: 'text/csv;charset=utf-8' }), `${t.modelFileName}.csv`);
+            return;
+        }
+        try {
+            const XLSX = await loadSheetJs();
+            const header = lang === 'en' ? 'Price' : 'Preço';
+            const rows = [[header]].concat(fileApi.MODEL_PRICES.map(price => [price]));
+            const book = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), header);
+            XLSX.writeFile(book, `${t.modelFileName}.xlsx`);
+        } catch (error) {
+            console.error('Excel model:', error);
+            showImportError('XLSX_LOADER_FAILED');
+        }
     }
 
     // --- Copy to Excel ----------------------------------------------------------
@@ -364,46 +1870,275 @@
         });
     }
 
-    const copyBtn = document.getElementById('copyTableButton');
-    copyBtn.addEventListener('click', () => {
-        if (!lastRun) return;
-        const originalHtml = copyBtn.innerHTML;
-        copyText(tableAsTsv(lastRun))
-            .then(() => {
-                copyBtn.textContent = t.copied;
-                setTimeout(() => { copyBtn.innerHTML = originalHtml; }, 2000);
-            })
-            .catch(() => showError(t.copyFailed));
-    });
+    // --- Events ----------------------------------------------------------------
 
-    // Back to the loaded values: the defaults, or the saved run on rerun.
-    function resetToInitial() {
-        hideResults();
-        showError('');
-        const prices = Array.isArray(initialData.prices) ? initialData.prices : [];
-        periodsInput.value = prices.length || initialData.periods;
-        buildTable(Number(periodsInput.value) || MIN_PERIODS, prices);
-    }
-
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();  // Enter in the periods field generates the table
-        generateTable();
-    });
-    document.getElementById('calculateButton').addEventListener('click', calculateVolatility);
-    document.getElementById('clearButton').addEventListener('click', resetToInitial);
-
-    saveBtn.addEventListener('click', () => {
-        if (!lastRun || !returnsChart) return;
-        saetoSaveProject({
-            button: saveBtn,
-            url: '{% url "save_financial_model" %}',
-            modelType: 'RETURN_VOLATILITY',
-            parameters: lastRun.parameters,
-            results: { ...lastRun.results, chart: returnsChart.toBase64Image() },
-            lang: lang,
+    screen.querySelectorAll('input[name="dataMode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            if (radio.checked) {
+                setMode(radio.value === 'file' ? 'file' : 'manual');
+            }
         });
     });
 
-    resetToInitial();
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();  // Enter in the N field applies it to the table
+        applyCount();
+    });
+
+    // Typing N never rebuilds the table on its own: it only marks it pending.
+    countInput.addEventListener('input', () => {
+        state.showCountError = false;
+        renderCountState();
+    });
+    countInput.addEventListener('blur', () => {
+        state.showCountError = true;
+        renderCountState();
+    });
+
+    let checkTimer = null;
+    inputBody.addEventListener('input', (event) => {
+        const input = event.target;
+        if (!input.dataset || input.dataset.index === undefined) {
+            return;
+        }
+        const index = Number(input.dataset.index);
+        state.priceTexts[index] = input.value;
+        // The row keeps its place and its cursor; its message goes as it is fixed.
+        if (state.rowErrors.has(index)) {
+            state.rowErrors.delete(index);
+            const error = el(`priceError_${index + 1}`);
+            if (error) {
+                error.textContent = '';
+                error.hidden = true;
+            }
+            input.setAttribute('aria-invalid', 'false');
+            renderErrorSummary();
+        }
+        markEdited();
+        markStale();
+        // The check follows typing after a short pause, never on every keystroke.
+        clearTimeout(checkTimer);
+        checkTimer = setTimeout(renderCheck, 200);
+    });
+
+    screen.querySelectorAll('[data-page-size]').forEach(select => {
+        core.PAGE_SIZES.forEach(size => {
+            const option = document.createElement('option');
+            option.value = String(size);
+            option.textContent = String(size);
+            select.appendChild(option);
+        });
+        select.value = String(state.pageSize);
+        select.addEventListener('change', () => {
+            state.pageSize = Number(select.value) || core.DEFAULT_PAGE_SIZE;
+            state.page = 1;
+            state.returnsPage = 1;
+            renderPricesTable();
+            renderReturnsTable();
+        });
+    });
+
+    // Paging is presentation only: it never changes the series that gets calculated.
+    const paged = [
+        {
+            ids: PRICE_PAGERS,
+            total: () => state.priceTexts.length,
+            current: () => state.page,
+            go: (page) => { state.page = page; renderPricesTable(); },
+        },
+        {
+            ids: RETURN_PAGERS,
+            total: () => (state.lastRun ? state.lastRun.results.discrete_returns.length : 0),
+            current: () => state.returnsPage,
+            go: (page) => { state.returnsPage = page; renderReturnsTable(); },
+        },
+    ];
+    paged.forEach(table => table.ids.forEach(id => {
+        el(id).addEventListener('click', (event) => {
+            const action = event.target.closest('[data-page]');
+            if (!action) {
+                return;
+            }
+            const total = table.total();
+            const moves = {
+                first: 1,
+                prev: table.current() - 1,
+                next: table.current() + 1,
+                last: core.pageCount(total, state.pageSize),
+            };
+            table.go(core.clampPage(moves[action.dataset.page], total, state.pageSize));
+        });
+    }));
+
+    el('goToFirstErrorButton').addEventListener('click', goToFirstError);
+    calculateBtn.addEventListener('click', calculate);
+    undoBtn.addEventListener('click', undoLast);
+
+    el('clearButton').addEventListener('click', () => {
+        snapshot(t.undoClear);
+        applySeries(state.priceTexts.map(() => ''));
+        goToRow(0);
+    });
+
+    el('exampleLink').addEventListener('click', () => {
+        snapshot(t.undoExample);
+        applySeries(asTexts(exampleData.prices), 'example');
+    });
+
+    // --- Import events ---------------------------------------------------------
+
+    fileInput.addEventListener('change', () => readChosenFile(fileInput.files && fileInput.files[0]));
+
+    if (!window.saetoFileDropGuard) {
+        window.saetoFileDropGuard = true;
+        // Dropped anywhere else, the browser opens the file as a page and the
+        // series on screen, which was never saved, goes with it.
+        ['dragover', 'drop'].forEach(name =>
+            document.addEventListener(name, (event) => event.preventDefault()));
+    }
+
+    const dropZone = el('dropZone');
+    ['dragenter', 'dragover'].forEach(name => dropZone.addEventListener(name, (event) => {
+        event.preventDefault();
+        dropZone.classList.add('rv-dropping');
+    }));
+    dropZone.addEventListener('dragleave', (event) => {
+        if (!dropZone.contains(event.relatedTarget)) {
+            dropZone.classList.remove('rv-dropping');
+        }
+    });
+    dropZone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dropZone.classList.remove('rv-dropping');
+        const dropped = event.dataTransfer && event.dataTransfer.files;
+        if (dropped && dropped.length) {
+            readChosenFile(dropped[0]);
+        }
+    });
+
+    el('importHelp').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-model]');
+        if (button) {
+            downloadModel(button.dataset.model);
+        }
+    });
+
+    // Every choice in the preview only changes the preview, never the table.
+    el('previewSheet').addEventListener('change', (event) => {
+        configureSheet(Number(event.target.value) || 0);
+        renderPreview();
+    });
+    el('previewColumn').addEventListener('change', (event) => {
+        state.file.column = Number(event.target.value) || 0;
+        renderPreview();
+    });
+    el('previewHeader').addEventListener('change', (event) => {
+        const file = state.file;
+        const firstLine = file.sheets[file.sheetIndex].firstLine;
+        file.hasHeader = event.target.checked;
+        // The first data line follows the header, unless the user moved it already.
+        file.from = Math.max(file.from, firstLine + (file.hasHeader ? 1 : 0));
+        if (!file.hasHeader && file.from === firstLine + 1) {
+            file.from = firstLine;
+        }
+        renderPreview();
+    });
+    el('previewReverse').addEventListener('change', (event) => {
+        state.file.reversed = event.target.checked;
+        renderPreview();
+    });
+    [['previewFrom', 'from'], ['previewTo', 'to']].forEach(([id, key]) => {
+        el(id).addEventListener('change', (event) => {
+            const file = state.file;
+            const sheet = file.sheets[file.sheetIndex];
+            const value = Number(event.target.value);
+            // An emptied or out-of-range field keeps the range inside the file
+            // instead of selecting nothing and blaming the file for it.
+            if (event.target.value.trim() !== '' && Number.isInteger(value)) {
+                file[key] = Math.min(Math.max(value, sheet.firstLine), lastLineOf(sheet));
+            }
+            if (file.from > file.to) {
+                file[key === 'from' ? 'to' : 'from'] = file[key];
+            }
+            renderPreview();   // writes the range actually in use back into the fields
+        });
+    });
+
+    el('previewDelimiter').addEventListener('change', (event) => applyDelimiter(event.target.value));
+
+    usePricesBtn.addEventListener('click', usePrices);
+    el('cancelImportButton').addEventListener('click', () => {
+        state.fileToken++;   // a read still running belongs to a file nobody wants
+        closePreview();
+        show(importError, false);
+        setImportStatus('');
+        fileInput.focus();
+    });
+
+    const restoreButton = el('restoreButton');
+    if (restoreButton) {
+        restoreButton.addEventListener('click', () => {
+            snapshot(t.undoRestore);
+            applySeries(asTexts(initialData.prices), 'project');
+        });
+    }
+
+    // Captured once: a second click inside the confirmation window would
+    // otherwise save “Copiado!” as the label to put back.
+    const copyLabelHtml = copyBtn.innerHTML;
+    let copyResetTimer = null;
+    copyBtn.addEventListener('click', () => {
+        if (!state.lastRun || state.stale) {
+            return;
+        }
+        show(copyError, false);
+        copyText(tableAsTsv(state.lastRun))
+            .then(() => {
+                copyBtn.textContent = t.copied;
+                clearTimeout(copyResetTimer);
+                copyResetTimer = setTimeout(() => { copyBtn.innerHTML = copyLabelHtml; }, 2000);
+            })
+            .catch(() => {
+                copyError.textContent = t.copyFailed;
+                show(copyError, true);
+            });
+    });
+
+    saveBtn.addEventListener('click', () => {
+        if (!state.lastRun || state.stale || !state.chart) {
+            return;
+        }
+        const run = state.lastRun;
+        Promise.resolve(saetoSaveProject({
+            button: saveBtn,
+            url: '{% url "save_financial_model" %}',
+            modelType: 'RETURN_VOLATILITY',
+            parameters: run.parameters,
+            results: { ...run.results, chart: state.chart.toBase64Image() },
+            lang: lang,
+        })).finally(() => {
+            // The analysis may have changed while the request was in flight.
+            renderOutputState();
+        });
+    });
+
+    function start() {
+        el('priceCountHint').textContent = t.countHint;
+        const megabyte = 1024 * 1024;
+        screen.querySelectorAll('[data-limit-mb]').forEach(node => {
+            node.textContent = String(Math.round(fileApi.MAX_FILE_BYTES / megabyte));
+        });
+        const prices = asTexts(initialData.prices);
+        const count = countResult();
+        const rows = count.code ? MIN_PRICES : count.value;
+        state.priceTexts = prices.length ? prices : new Array(rows).fill('');
+        countInput.value = String(state.priceTexts.length);
+        state.mode = el('dataModeFile').checked ? 'file' : 'manual';
+        renderOutputState();
+        renderMode();   // renders the source and the data in the chosen mode
+        renderReturnsTable();
+    }
+
+    start();
 })();
 </script>

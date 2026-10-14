@@ -25,9 +25,17 @@ class CadeiaMarkovUseCase:
         self.transition_matrix = np.array(transition_matrix, dtype=float)  # rows sum to 1
         # The form accepts rounded percentages. Avoid accumulating their rounding
         # error over long runs (which would make the total probability drift).
-        self.transition_matrix /= self.transition_matrix.sum(axis=1, keepdims=True)
+        row_totals = self.transition_matrix.sum(axis=1, keepdims=True)
+        # A row that adds up to zero has no distribution to normalise: dividing
+        # would turn the whole run into NaN behind a numpy warning, so say it here.
+        if not np.all(row_totals > 0):
+            raise ValueError('each row of the transition matrix must add up to more than zero')
+        self.transition_matrix /= row_totals
         self.initial_state = np.array(initial_distribution, dtype=float)
-        self.initial_state = self.initial_state / self.initial_state.sum()
+        initial_total = self.initial_state.sum()
+        if not initial_total > 0:
+            raise ValueError('the initial distribution must add up to more than zero')
+        self.initial_state = self.initial_state / initial_total
         self.steps = steps
         self.language = language
 

@@ -1,14 +1,13 @@
 <!-- app_teoria/templates/home.html -->
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{% if request.session.language == 'en' %}en{% else %}pt-BR{% endif %}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -24,6 +23,8 @@
             display: flex;
             flex-direction: column;
             padding-top: 20px;
+            overflow-y: auto;  /* a long menu scrolls instead of being cut off */
+            z-index: 1040;
         }
         .sidebar a {
             color: #ffffff;
@@ -117,9 +118,61 @@
             justify-content: flex-end;
             gap: 0.5rem;
         }
+
+        /* Small screens: the 200px menu collapses and gives its width to the tool.
+           The toggle is fixed while scrolling, so .content reserves its height. */
+        .menu-toggle {
+            display: none;
+            position: fixed;
+            top: 0.5rem;
+            left: 0.5rem;
+            z-index: 1045;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .menu-backdrop { display: none; }
+        @media (max-width: 991.98px) {
+            .menu-toggle { display: inline-flex; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.2s ease;
+                box-shadow: 0 0 1rem rgba(0, 0, 0, 0.3);
+            }
+            body.menu-open .sidebar {
+                transform: translateX(0);
+                padding-top: 56px;  /* keeps the first link clear of the toggle */
+            }
+            .content {
+                margin-left: 0;
+                padding-top: 56px;
+            }
+            body.menu-open .menu-backdrop {
+                display: block;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 1035;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .sidebar { transition: none; }
+        }
     </style>
 </head>
 <body>
+
+    <button type="button" class="menu-toggle btn btn-dark" id="menuToggle"
+            aria-controls="siteSidebar" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        Menu
+    </button>
+    <div class="menu-backdrop" id="menuBackdrop"></div>
 
     <!-- Sidebar -->
     {% include 'site/home/sidebar.html' %}
@@ -165,6 +218,8 @@
     <script src="{% static 'app_teoria/home/save_project.js' %}"></script>
     <script src="{% static 'app_teoria/home/seeded_random.js' %}"></script>
     <script src="{% static 'app_teoria/home/server_screen.js' %}"></script>
+    <script src="{% static 'app_teoria/volatility/return_volatility_core.js' %}"></script>
+    <script src="{% static 'app_teoria/volatility/price_file_reader.js' %}"></script>
     <script>
         function updateLanguage(language) {
             $.ajax({
@@ -183,16 +238,57 @@
             });
         }
 
+        // The collapsed menu of small screens: a button, a backdrop and Escape all
+        // close it, and the focus goes back to where it came from.
+        (function () {
+            const toggle = document.getElementById('menuToggle');
+            const sidebar = document.getElementById('siteSidebar');
+            const backdrop = document.getElementById('menuBackdrop');
+
+            function setMenu(open) {
+                document.body.classList.toggle('menu-open', open);
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+
+            window.saetoCloseMenu = function () {
+                if (document.body.classList.contains('menu-open')) {
+                    setMenu(false);
+                }
+            };
+
+            toggle.addEventListener('click', function () {
+                const open = !document.body.classList.contains('menu-open');
+                setMenu(open);
+                if (open) {
+                    const first = sidebar.querySelector('a, button, select');
+                    if (first) { first.focus(); }
+                } else {
+                    toggle.focus();
+                }
+            });
+            backdrop.addEventListener('click', function () {
+                setMenu(false);
+                toggle.focus();
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && document.body.classList.contains('menu-open')) {
+                    setMenu(false);
+                    toggle.focus();
+                }
+            });
+        })();
+
         $(document).ready(function(){
             $('#main-content, .sidebar').on('click', '.nav-link, .rerun-btn', function(event){
                 event.preventDefault(); // Prevent default link behavior
                 const url = $(this).data('url'); // Get the URL from the data-url attribute
 
                 if (url) { // Ensure there is a URL to fetch
+                    window.saetoCloseMenu();  // a tool chosen on a phone gets the whole width
                     $.ajax({
                         url: url,
                         success: function(data) {
-                            $('#main-content').html(data); 
+                            $('#main-content').html(data);
                         },
                         error: function() {
                             $('#main-content').html('<p>Erro ao carregar conteúdo. Tente novamente.</p>');

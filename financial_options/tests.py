@@ -1,4 +1,6 @@
 import json
+import math
+import statistics
 import uuid
 
 from django.contrib.auth.models import User
@@ -532,24 +534,54 @@ class ReportViewTests(LoggedInTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+def _sample_std(values):
+    # A series too short to be accepted still needs a payload to post.
+    return statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def return_volatility_payload(prices, name=''):
+    """A save payload shaped like the screen's, for any series of prices."""
+    discrete = [(prices[i] - prices[i - 1]) / prices[i - 1] for i in range(1, len(prices))]
+    continuous = [math.log(prices[i] / prices[i - 1]) for i in range(1, len(prices))]
+    return {
+        'name': name,
+        'model_type': Choices.RETURN_VOLATILITY,
+        'parameters': {'periods': len(prices), 'prices': prices},
+        'results': {
+            'discrete_returns': discrete,
+            'continuous_returns': continuous,
+            'mean_discrete': statistics.fmean(discrete),
+            'mean_continuous': statistics.fmean(continuous),
+            'volatility_discrete': _sample_std(discrete),
+            'volatility_continuous': _sample_std(continuous),
+            'chart': PNG,
+        },
+    }
+
+
 class ReturnVolatilityTests(LoggedInTestCase):
     def test_report_shows_the_prices_in_the_table_not_in_the_parameters(self):
         simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
 
         self.set_language('pt')
         response = self.client.get(reverse('view_report', args=[simulation.id]))
-        self.assertEqual(response.context['parameters'], {'Número de Períodos': 5})
-        self.assertEqual(response.context['results']['Volatilidade discreta (por período)'], '8,31%')
-        self.assertEqual(response.context['results']['Volatilidade contínua (por período)'], '8,10%')
-        rows = response.context['tables'][0]['rows']
-        self.assertEqual(len(rows), 5)
-        self.assertEqual(rows[0], [1, '100,00', '-', '-'])
-        self.assertEqual(rows[2], [3, '98,00', '-6,67%', '-6,90%'])
+        self.assertEqual(response.context['parameters'], {'Número de preços (N)': 5})
+        results = response.context['results']
+        self.assertEqual(results['Número de preços (N)'], 5)
+        self.assertEqual(results['Número de retornos (n = N − 1)'], 4)
+        self.assertEqual(results['Volatilidade discreta (por período)'], '8,31%')
+        self.assertEqual(results['Volatilidade contínua (por período)'], '8,10%')
+        table = response.context['tables'][0]
+        self.assertEqual(table['headers'][:2], ['Período (t)', 'Preço do ativo S(t)'])
+        self.assertEqual(len(table['rows']), 5)
+        self.assertEqual(table['rows'][0], [1, '100,00', '-', '-'])
+        self.assertEqual(table['rows'][2], [3, '98,00', '-6,67%', '-6,90%'])
 
         self.set_language('en')
         response = self.client.get(reverse('view_report', args=[simulation.id]))
-        self.assertEqual(response.context['parameters'], {'Number of Periods': 5})
+        self.assertEqual(response.context['parameters'], {'Number of prices (N)': 5})
         self.assertEqual(response.context['results']['Mean discrete return (per period)'], '2.08%')
+        self.assertEqual(response.context['tables'][0]['headers'][1], 'Asset price S(t)')
         self.assertEqual(response.context['tables'][0]['rows'][4], [5, '107.50', '-2.27%', '-2.30%'])
 
     def test_rerun_fills_the_table_with_the_saved_prices(self):
@@ -562,10 +594,69 @@ class ReturnVolatilityTests(LoggedInTestCase):
             '<script id="volatilityInitialData" type="application/json">{"periods": 3, "prices": [10, 12.5, 11]}</script>',
         )
 
-    def test_screen_validates_periods_and_prices(self):
+    def test_rerun_keeps_the_example_reachable_and_offers_the_saved_data_back(self):
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+        simulation.parameters = {'periods': 3, 'prices': [10, 12.5, 11]}
+        simulation.save()
+        response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        # The example of the screen stays available next to the saved series.
+        self.assertContains(
+            response,
+            '<script id="volatilityExampleData" type="application/json">'
+            '{"periods": 5, "prices": [100, 105, 98, 110, 107.5]}</script>',
+        )
+        self.assertContains(response, 'id="restoreButton"')
+        # A first load has no saved data to restore, so it does not offer it.
+        self.assertNotContains(self.client.get(reverse('volatilidade_template')), 'id="restoreButton"')
+
+    def test_screen_accepts_from_3_to_1000_prices(self):
+        response = self.client.get(reverse('volatilidade_template'))
+        self.assertContains(response, 'min="3"')
+        self.assertContains(response, 'max="1000"')
+        limits = response.context['limits']
+        self.assertEqual(limits, {'min_prices': 3, 'max_prices': 1000})
+
+    def test_screen_names_the_count_and_the_price_column(self):
+        for language, labels in (
+            ('pt', ('Número de preços (N)', 'Preço do ativo S(t)')),
+            ('en', ('Number of prices (N)', 'Asset price S(t)')),
+        ):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('volatilidade_template'))
+                for label in labels:
+                    self.assertContains(response, label)
+
+    def test_screen_imports_a_file_and_says_how_it_must_be_organised(self):
+        for language, texts in (
+            ('pt', ('Importar um arquivo com os preços', 'Como o arquivo deve estar organizado',
+                    'Um preço por linha', 'sem separador de milhar',
+                    'baixar o modelo CSV', 'Coluna de preços')),
+            ('en', ('Import a file with the prices', 'How the file must be organised',
+                    'One price per row', 'no thousands separator',
+                    'download the CSV model', 'Price column')),
+        ):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('volatilidade_template'))
+                for text in texts:
+                    self.assertContains(response, escape(text))
+                self.assertContains(response, 'id="priceFileInput"')
+                self.assertContains(response, 'accept=".csv,.txt,.xlsx')
+                # The Excel reader is fetched only when a spreadsheet is opened, and
+                # the browser checks the file it gets against this hash.
+                self.assertContains(response, 'cdn.sheetjs.com')
+                self.assertContains(response, 'sha384-')
+                # The example moved out of the action row but stays one click away.
+                self.assertNotContains(response, 'id="exampleButton"')
+                self.assertContains(response, 'id="exampleLink"')
+
+    def test_screen_validates_the_count_and_the_prices(self):
         for language, messages in (
-            ('pt', ('entre ${MIN_PERIODS} e ${MAX_PERIODS}', 'maiores que zero')),
-            ('en', ('between ${MIN_PERIODS} and ${MAX_PERIODS}', 'greater than zero')),
+            ('pt', ('entre ${MIN_PRICES} e ${MAX_PRICES}', 'maior que zero',
+                    'número inteiro', 'Dados alterados. Recalcule para atualizar.')),
+            ('en', ('between ${MIN_PRICES} and ${MAX_PRICES}', 'greater than zero',
+                    'whole number', 'Data changed. Recalculate to update.')),
         ):
             with self.subTest(language=language):
                 self.set_language(language)
@@ -574,6 +665,97 @@ class ReturnVolatilityTests(LoggedInTestCase):
                     self.assertContains(response, message)
                 # A top-level `let` breaks the second time the screen is injected (plan §2.6).
                 self.assertNotContains(response, 'let returnsChart;')
+
+
+class ReturnVolatilitySaveTests(LoggedInTestCase):
+    """The size rule of the screen, checked again when the series is saved."""
+
+    def post(self, payload):
+        return self.client.post(reverse('save_financial_model'), json.dumps(payload),
+                                content_type='application/json')
+
+    def series(self, count):
+        return [100 + (index % 7) for index in range(count)]
+
+    def test_a_year_of_prices_is_saved_and_reported(self):
+        response = self.post(return_volatility_payload(self.series(249), name='WEGE3'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        simulation = FinantialModels.objects.get(name='WEGE3')
+        self.assertEqual(len(simulation.parameters['prices']), 249)
+        self.assertEqual(len(simulation.results['discrete_returns']), 248)
+        report = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(report.context['results']['Número de retornos (n = N − 1)'], 248)
+
+    def test_the_limits_of_the_screen_are_the_limits_of_the_save(self):
+        for count in (3, 300, 1000):
+            with self.subTest(count=count):
+                response = self.post(return_volatility_payload(self.series(count), name=f'ok-{count}'))
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.json()['success'])
+        for count in (2, 1001):
+            with self.subTest(count=count):
+                response = self.post(return_volatility_payload(self.series(count), name=f'no-{count}'))
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('de 3 a 1000 preços', response.json()['error'])
+        self.assertEqual(FinantialModels.objects.count(), 3)
+
+    def test_a_price_that_is_not_a_positive_number_names_its_row(self):
+        for price in (0, -5, 'abc', None, True):
+            with self.subTest(price=price):
+                payload = return_volatility_payload(self.series(5))
+                payload['parameters']['prices'][2] = price
+                response = self.post(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('linha 3', response.json()['error'])
+        self.assertFalse(FinantialModels.objects.exists())
+
+    def test_results_that_do_not_match_the_series_are_refused(self):
+        payload = return_volatility_payload(self.series(5))
+        payload['results']['continuous_returns'] = payload['results']['continuous_returns'][:2]
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('4 retornos para 5 preços', response.json()['error'])
+
+        payload = return_volatility_payload(self.series(5))
+        payload['parameters']['periods'] = 9
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('não corresponde', response.json()['error'])
+
+        # A value that is not a number is said to be that, not counted as a mismatch.
+        payload = return_volatility_payload(self.series(5))
+        payload['parameters']['periods'] = '5'
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('deve ser um número', response.json()['error'])
+        self.assertNotIn('não corresponde', response.json()['error'])
+
+        payload = return_volatility_payload(self.series(5))
+        payload['results']['volatility_continuous'] = None
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('números finitos', response.json()['error'])
+        self.assertFalse(FinantialModels.objects.exists())
+
+    def test_a_non_finite_number_is_refused(self):
+        payload = return_volatility_payload(self.series(5))
+        payload['results']['mean_continuous'] = float('inf')
+        response = self.client.post(reverse('save_financial_model'), json.dumps(payload),
+                                    content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(FinantialModels.objects.exists())
+
+    def test_the_message_follows_the_language_of_the_session(self):
+        self.set_language('en')
+        response = self.post(return_volatility_payload(self.series(2)))
+        self.assertIn('from 3 to 1000 prices', response.json()['error'])
+
+    def test_models_without_a_payload_rule_are_untouched(self):
+        response = self.post({'name': 'bs', 'model_type': Choices.BLACK_SCHOLES,
+                              'parameters': {'a': 1}, 'results': {'b': 2}})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
 
 
 class BinomialRealOptionTests(LoggedInTestCase):

@@ -1,4 +1,4 @@
-<div class="sidebar">
+<nav class="sidebar" id="siteSidebar" aria-label="{% if request.session.language == 'en' %}Main menu{% else %}Menu principal{% endif %}">
     <a class="text-center" style="font-size:24px;" href="/home">Menu</a>
     <div class="accordion-section">
         <input type="checkbox" id="accordion-1" class="accordion-checkbox">
@@ -26,7 +26,7 @@
                 {% if request.session.language == 'en' %}Mean Reversion Model{% else %}Modelo de Reversão a Média{% endif %}
             </a>
             <a class="nav-link" data-url="{% url 'vizualizacao_modelos' %}">
-                {% if request.session.language == 'en' %}Models vizualization{% else %}Vizualição dos modelos{% endif %}
+                {% if request.session.language == 'en' %}Model visualization{% else %}Visualização dos modelos{% endif %}
             </a>
         </div>
     </div>
@@ -143,4 +143,4 @@
             {% if request.session.language == 'en' %}log-out{% else %}Sair{% endif %}
         </a> 
     </div>
-</div>
+</nav>

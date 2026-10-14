@@ -5,8 +5,9 @@ Each ``model_type`` maps to a ``ModelSpec``, which the save, report, rerun and
 list code all read from. To add a model: add the choice, add an entry here and
 the coverage test in ``financial_options/tests.py`` passes again.
 """
+import math
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Optional
 
 from estocasticos.labels import stat_label
 from financial_options.models import FinantialModelsChoices
@@ -24,6 +25,11 @@ class ModelSpec:
     param_labels: dict = field(default_factory=dict)  # {'pt': {key: label}, 'en': {...}}
     value_labels: dict = field(default_factory=dict)  # {'pt': {key: {value: label}}, 'en': {...}}
     table_params: tuple = ()                          # list inputs the report shows in a table instead
+    limits: dict = field(default_factory=dict)        # ranges the screen, the save and the messages share
+    # (parameters, results, language) -> error message, or None when the payload is
+    # coherent. Checks size, types and finiteness of what the browser calculated; it
+    # is not a second, independent calculation of the model.
+    validate_payload: Optional[Callable[[dict, dict, str], Optional[str]]] = None
 
     def label_parameters(self, parameters, language):
         """Translate parameter names and choice values, in the order of ``param_labels``."""
@@ -292,6 +298,67 @@ def build_collar_report(parameters, results, language):
 
 # --- Return & volatility (computed in the browser) ---------------------------
 
+# The screen, the restore and this validation share one size rule (plan §3): the
+# feedback asks for at least 300 prices, and 1,000 is the explicit limit.
+RETURN_VOLATILITY_LIMITS = {'min_prices': 3, 'max_prices': 1000}
+
+
+def _finite(value):
+    """The number a JSON field holds, or None when it is not a finite number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def validate_return_volatility(parameters, results, language):
+    """Size, types and finiteness of a series saved from the screen."""
+    min_prices = RETURN_VOLATILITY_LIMITS['min_prices']
+    max_prices = RETURN_VOLATILITY_LIMITS['max_prices']
+    prices = parameters.get('prices')
+    if not isinstance(prices, list) or not min_prices <= len(prices) <= max_prices:
+        return _t(language,
+                  f'A série deve ter de {min_prices} a {max_prices} preços.',
+                  f'The series must have from {min_prices} to {max_prices} prices.')
+    for row, price in enumerate(prices, start=1):
+        number = _finite(price)
+        if number is None or number <= 0:
+            return _t(language,
+                      f'O preço da linha {row} deve ser um número maior que zero.',
+                      f'The price in row {row} must be a number greater than zero.')
+
+    periods = parameters.get('periods')
+    if periods is not None:
+        # A value that is not a number is said to be that, not reported as a count
+        # that does not match: the user would go looking for a miscount.
+        count = _finite(periods)
+        if count is None:
+            return _t(language,
+                      'O número de preços (N) deve ser um número.',
+                      'The number of prices (N) must be a number.')
+        if count != len(prices):
+            return _t(language,
+                      f'O número de preços (N) informado não corresponde aos {len(prices)} preços da série.',
+                      f'The number of prices (N) does not match the {len(prices)} prices in the series.')
+
+    # N prices give n = N − 1 returns; a mismatch means the results are not this series'.
+    expected = len(prices) - 1
+    for key in ('discrete_returns', 'continuous_returns'):
+        series = results.get(key)
+        if not isinstance(series, list) or len(series) != expected:
+            return _t(language,
+                      f'Os resultados devem conter {expected} retornos para {len(prices)} preços.',
+                      f'The results must contain {expected} returns for {len(prices)} prices.')
+        if any(_finite(value) is None for value in series):
+            return _t(language, 'Os retornos devem ser números finitos.',
+                      'The returns must be finite numbers.')
+    for key in ('mean_discrete', 'mean_continuous', 'volatility_discrete', 'volatility_continuous'):
+        if _finite(results.get(key)) is None:
+            return _t(language, 'As médias e volatilidades devem ser números finitos.',
+                      'The means and volatilities must be finite numbers.')
+    return None
+
+
 def _return_percent(value, language):
     """A return saved as a fraction (0.05), shown as a percentage (5,00%)."""
     try:
@@ -315,21 +382,22 @@ def build_return_volatility_report(parameters, results, language):
             _return_percent(continuous[index - 1], language) if has_return and index <= len(continuous) else '-',
         ])
     headers = [
-        _t(language, 'Período', 'Period'),
-        _t(language, 'Valor do Ativo', 'Asset Value'),
+        _t(language, 'Período (t)', 'Period (t)'),
+        _t(language, 'Preço do ativo S(t)', 'Asset price S(t)'),
         _t(language, 'Retorno Discreto', 'Discrete Return'),
         _t(language, 'Retorno Contínuo', 'Continuous Return'),
     ]
     return {
         'results': {
-            _t(language, 'Número de retornos', 'Number of returns'): len(discrete),
+            _t(language, 'Número de preços (N)', 'Number of prices (N)'): len(prices),
+            _t(language, 'Número de retornos (n = N − 1)', 'Number of returns (n = N − 1)'): len(discrete),
             _t(language, 'Retorno médio discreto (por período)', 'Mean discrete return (per period)'): _return_percent(results.get('mean_discrete'), language),
             _t(language, 'Retorno médio contínuo (por período)', 'Mean continuous return (per period)'): _return_percent(results.get('mean_continuous'), language),
             _t(language, 'Volatilidade discreta (por período)', 'Discrete volatility (per period)'): _return_percent(results.get('volatility_discrete'), language),
             _t(language, 'Volatilidade contínua (por período)', 'Continuous volatility (per period)'): _return_percent(results.get('volatility_continuous'), language),
         },
         'tables': [{
-            'title': _t(language, 'Valores e retornos por período', 'Values and returns by period'),
+            'title': _t(language, 'Preços e retornos por período', 'Prices and returns by period'),
             'headers': headers,
             'rows': rows,
         }],
@@ -814,12 +882,16 @@ REGISTRY: dict[str, ModelSpec] = {
     FinantialModelsChoices.RETURN_VOLATILITY: ModelSpec(
         template='site/teoria/volatilidade.html',
         build_report=build_return_volatility_report,
+        # The five prices of the screen's example; `periods` stays as the key that
+        # holds N, so projects saved before the label changed still re-run.
         defaults={'periods': 5, 'prices': [100, 105, 98, 110, 107.5]},
         param_labels={
-            'pt': {'periods': 'Número de Períodos', 'prices': 'Valores do Ativo'},
-            'en': {'periods': 'Number of Periods', 'prices': 'Asset Values'},
+            'pt': {'periods': 'Número de preços (N)', 'prices': 'Preços do ativo'},
+            'en': {'periods': 'Number of prices (N)', 'prices': 'Asset prices'},
         },
         table_params=('prices',),
+        limits=RETURN_VOLATILITY_LIMITS,
+        validate_payload=validate_return_volatility,
     ),
     FinantialModelsChoices.BINOMIAL_REAL_OPTION: ModelSpec(
         template='site/teoria/binomial_model.html',

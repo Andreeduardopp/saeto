@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 import traceback
@@ -28,14 +29,25 @@ def _initial_data(request, model_type):
 
 def _render_screen(request, model_type, extra_context=None):
     language = request.session.get('language', 'pt')
+    extra = extra_context or {}
+    screen = REGISTRY[model_type]
     context = {
-        'initial_data': _initial_data(request, model_type),
+        # A saved project brings its own data: the defaults are not read at all then.
+        'initial_data': extra['initial_data'] if 'initial_data' in extra
+                        else _initial_data(request, model_type),
         'language': language,
         'stat_labels': stat_labels(language),
         'max_markov_steps': MAX_MARKOV_STEPS,
-        **(extra_context or {}),
+        # The screen reads its ranges from the registry, so HTML, messages and the
+        # save validation cannot drift apart. Copies, because the registry's dicts
+        # live as long as the process and are shared by every request.
+        'limits': copy.deepcopy(screen.limits),
+        # The example of the screen, still reachable after a saved project replaced
+        # `initial_data`.
+        'screen_defaults': copy.deepcopy(screen.defaults),
     }
-    return render(request, REGISTRY[model_type].template, context)
+    context.update(extra)
+    return render(request, screen.template, context)
 
 
 @login_required(login_url='/admin/login/')
@@ -187,6 +199,16 @@ def save_financial_model(request):
     results = data.get('results')
     if not all([model_type, parameters, results]):
         return JsonResponse({'success': False, 'error': 'Missing data in request.'}, status=400)
+    if not isinstance(parameters, dict) or not isinstance(results, dict):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON format.'}, status=400)
+
+    # Models that declare one check their own payload: size, types and finiteness of
+    # the series the browser calculated.
+    spec = REGISTRY.get(model_type)
+    if spec is not None and spec.validate_payload is not None:
+        error = spec.validate_payload(parameters, results, language)
+        if error:
+            return JsonResponse({'success': False, 'error': error}, status=400)
 
     financial_model = FinantialModels(
         usuario=request.user,
@@ -689,6 +711,10 @@ def rerun_simulation_view(request, simulation_id):
     return _render_screen(request, simulation.model_type, {
         # Defaults first, so saves made before a screen gained an input still re-run.
         'initial_data': {**spec.defaults, **simulation.parameters},
+        # The screen says it is showing a saved project, not its own example, and
+        # offers to restore these values after they are edited.
+        'is_rerun': True,
+        'saved_project_name': simulation.name,
     })
 
 @login_required(login_url='/admin/login/')
