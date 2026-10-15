@@ -8,6 +8,7 @@ The screens get the labels of the session language through `stat_labels()`.
 
 STAT_LABELS = {
     'mean': ('Média', 'Mean'),
+    'mean_estimated': ('Média estimada', 'Estimated mean'),
     'mean_theoretical': ('Média (teórica)', 'Mean (theoretical)'),
     'median': ('Mediana', 'Median'),
     'std': ('Desvio padrão', 'Standard deviation'),

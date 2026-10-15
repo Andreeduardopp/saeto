@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -15,7 +16,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'random_walk_normal' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'random_walk_normal' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         Random walk
@@ -30,7 +31,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'random_walk_template' %}" 
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'random_walk_template' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Random walk distribuition{% else %}Distribuições random walk{% endif %}

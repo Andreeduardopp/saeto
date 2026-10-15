@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -21,7 +22,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'call_put_options' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'call_put_options' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Call and Put Options{% else %}Opções de compra e de venda{% endif %}
@@ -46,7 +47,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'asset_put_combination' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'asset_put_combination' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Combination - asset purchase and put option{% else %}Combinação - compra do ativo e da opção de venda{% endif %}
@@ -61,7 +62,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'bull_bear_spread' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'bull_bear_spread' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Options Spread Payoff{% else %}Trava de alta e baixa{% endif %}
@@ -76,7 +77,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'collar_strategy_simulator' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'collar_strategy_simulator' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Collar Strategy (Risk-Free Portfolio){% else %}Estratégia Collar (Portfólio Livre de Risco){% endif %}

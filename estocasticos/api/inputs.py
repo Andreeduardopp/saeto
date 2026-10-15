@@ -19,8 +19,10 @@ class InvalidInput(Exception):
         return self.en if language == 'en' else self.pt
 
 
-def _format(value):
-    return f'{value:g}'
+def format_bound(value, language):
+    """A bound as its message shows it: no exponent, separators of the language."""
+    text = f'{int(value):,}' if float(value).is_integer() else f'{value:g}'
+    return text if language == 'en' else text.translate(str.maketrans(',.', '.,'))
 
 
 def read_number(data, name, label, *, minimum=None, maximum=None, integer=False, above=None):
@@ -40,23 +42,23 @@ def read_number(data, name, label, *, minimum=None, maximum=None, integer=False,
 
     if above is not None and value <= above:
         raise InvalidInput(
-            f'{label_pt} deve ser maior que {_format(above)}.',
-            f'{label_en} must be greater than {_format(above)}.',
+            f'{label_pt} deve ser maior que {format_bound(above, "pt")}.',
+            f'{label_en} must be greater than {format_bound(above, "en")}.',
         )
     if (minimum is not None and value < minimum) or (maximum is not None and value > maximum):
         if minimum is not None and maximum is not None:
             raise InvalidInput(
-                f'{label_pt} deve estar entre {_format(minimum)} e {_format(maximum)}.',
-                f'{label_en} must be between {_format(minimum)} and {_format(maximum)}.',
+                f'{label_pt} deve estar entre {format_bound(minimum, "pt")} e {format_bound(maximum, "pt")}.',
+                f'{label_en} must be between {format_bound(minimum, "en")} and {format_bound(maximum, "en")}.',
             )
         if minimum is not None:
             raise InvalidInput(
-                f'{label_pt} deve ser no mínimo {_format(minimum)}.',
-                f'{label_en} must be at least {_format(minimum)}.',
+                f'{label_pt} deve ser no mínimo {format_bound(minimum, "pt")}.',
+                f'{label_en} must be at least {format_bound(minimum, "en")}.',
             )
         raise InvalidInput(
-            f'{label_pt} deve ser no máximo {_format(maximum)}.',
-            f'{label_en} must be at most {_format(maximum)}.',
+            f'{label_pt} deve ser no máximo {format_bound(maximum, "pt")}.',
+            f'{label_en} must be at most {format_bound(maximum, "en")}.',
         )
     return int(value) if integer else value
 
@@ -87,3 +89,21 @@ def check_grid(steps, simulations, *, max_steps=10000, max_cells=2_000_000):
             f'Passos × simulações = {steps * simulations:,}; o máximo é {max_cells:,}. Reduza um dos dois.'.replace(',', '.'),
             f'Steps × simulations = {steps * simulations:,}; the maximum is {max_cells:,}. Reduce one of them.',
         )
+
+
+def read_fields(data, language, fields):
+    """
+    Reads several fields at once, keeping the message of each one.
+
+    `fields` maps a field name to a callable that reads it from `data`. The
+    screens that mark every invalid field at the same time need all the
+    messages, not only the first, so an `InvalidInput` becomes one entry of
+    `errors` instead of interrupting the reading.
+    """
+    values, errors = {}, {}
+    for name, read in fields.items():
+        try:
+            values[name] = read(data)
+        except InvalidInput as error:
+            errors[name] = error.message(language)
+    return values, errors

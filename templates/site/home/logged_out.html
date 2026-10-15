@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>SAETO</title></head>
+<body><a href="{% url 'login-customizado' %}">Entrar / Sign in</a>
+<script>
+    try {
+        Object.keys(sessionStorage).filter(key => key.startsWith('saeto:draft:'))
+            .forEach(key => sessionStorage.removeItem(key));
+    } catch (_) {}
+    location.replace('{% url "login-customizado" %}');
+</script></body></html>

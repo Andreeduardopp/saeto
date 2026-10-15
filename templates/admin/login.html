@@ -63,6 +63,7 @@
             {% endif %}
                 <form method="post" action="{% url 'login-customizado' %}">
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ next }}">
                     <div class="form-group">
                         <label for="username">User</label>
                         <input type="text" class="form-control" id="username" name="username" required>

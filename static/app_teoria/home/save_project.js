@@ -17,6 +17,8 @@
             success: 'Projeto salvo com sucesso!',
             error: 'Erro ao salvar o projeto:',
             unexpected: 'Ocorreu um erro inesperado.',
+            report: 'Abrir relatório',
+            changed: 'Dados alterados. Recalcule antes de salvar.',
         },
         en: {
             title: 'Save project',
@@ -28,6 +30,8 @@
             success: 'Project saved successfully!',
             error: 'Error saving project:',
             unexpected: 'An unexpected error occurred.',
+            report: 'Open report',
+            changed: 'Data changed. Recalculate before saving.',
         },
     };
 
@@ -38,7 +42,7 @@
         return input ? input.value : '';
     }
 
-    function askProjectName(t, previousName) {
+    function askProjectName(t, previousName, remember) {
         return new Promise(resolve => {
             const dialog = document.createElement('dialog');
             dialog.className = 'border-0 rounded shadow p-4';
@@ -67,25 +71,44 @@
             dialog.querySelector('[data-cancel]').addEventListener('click', () => dialog.close());
             // Escape closes the dialog with the same result as Cancel.
             dialog.addEventListener('close', () => {
+                remember(input.value);
                 dialog.remove();
                 resolve(name);
             }, { once: true });
             document.body.appendChild(dialog);
             dialog.showModal();
+            window.saetoLifecycle?.register(() => { if (dialog.open) dialog.close(); });
             input.focus();
         });
     }
 
-    window.saetoSaveProject = async function ({ button, url, modelType, parameters, results, lang }) {
-        if (button.disabled) return;
+    window.saetoSaveProject = async function ({ button, url, modelType, parameters, results, lang, isCurrent = () => true }) {
+        if (button.disabled || button.dataset.saving === 'true') return;
         const t = MESSAGES[lang] || MESSAGES.pt;
         const originalHtml = button.innerHTML;
+        const snapshot = JSON.stringify({ model_type: modelType, parameters, results });
+        button.dataset.saving = 'true';
         button.disabled = true;
+        const status = button.saetoSaveStatus || document.createElement('p');
+        if (!button.saetoSaveStatus) {
+            status.className = 'small mt-2';
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-live', 'polite');
+            button.insertAdjacentElement('afterend', status);
+            button.saetoSaveStatus = status;
+        }
+        const show = message => { status.textContent = message; };
 
         try {
-            const name = await askProjectName(t, button.dataset.projectName);
+            const name = await askProjectName(t, button.dataset.projectName, value => {
+                button.dataset.projectName = value;
+                window.saetoLifecycle?.changed();
+                window.saetoLifecycle?.flush();
+            });
             if (name === null) return;
+            if (!isCurrent() || button.isConnected === false) { show(t.changed); return; }
             button.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t.saving}`;
+            show(t.saving);
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -93,22 +116,32 @@
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRFToken': findCsrfToken(button),
                 },
-                body: JSON.stringify({ name, model_type: modelType, parameters, results }),
+                body: JSON.stringify({ ...JSON.parse(snapshot), name }),
             });
             const data = await response.json();
             if (response.ok && data.success) {
                 button.dataset.projectName = data.name || name;
-                alert(t.success);
+                show(t.success);
+                if (data.report_url) {
+                    const link = document.createElement('a');
+                    link.href = data.report_url;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.textContent = ` ${t.report}`;
+                    status.appendChild(link);
+                }
             } else {
-                alert(`${t.error} ${data.error || t.unexpected}`);
+                show(`${t.error} ${data.error || t.unexpected}`);
             }
             return data;
         } catch (error) {
             console.error('Error saving project:', error);
-            alert(t.unexpected);
+            show(t.unexpected);
         } finally {
-            button.disabled = false;
+            delete button.dataset.saving;
+            button.disabled = !isCurrent() || button.isConnected === false;
             button.innerHTML = originalHtml;
+            if (!button.disabled) button.focus();
         }
     };
 })();

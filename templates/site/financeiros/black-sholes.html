@@ -488,21 +488,4 @@
         });
     }
 
-    // Initialize when DOM is loaded - just for checking elements exist
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('blackScholesForm');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const resultsContainer = document.getElementById('blackScholesResults');
-        const calculateBtn = document.getElementById('calculateBtn');
-
-        console.log('DOM fully loaded - Elements check:', {
-            form: form ? 'Found' : 'Not found',
-            loadingSpinner: loadingSpinner ? 'Found' : 'Not found',
-            resultsContainer: resultsContainer ? 'Found' : 'Not found',
-            calculateBtn: calculateBtn ? 'Found' : 'Not found'
-        });
-
-        if (calculateBtn) calculateBtn.addEventListener('click', handleSubmit);
-
-    });
 </script>

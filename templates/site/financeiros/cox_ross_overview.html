@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -15,7 +16,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'cox_ross_rubinstein' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'cox_ross_rubinstein' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}CRR - Discrete Time{% else %}CRR - Tempo Discreto{% endif %}
@@ -30,7 +31,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'to_do' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'to_do' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}CRR - Continuous Time{% else %}CRR - Tempo Contínuo{% endif %}

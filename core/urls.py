@@ -4,6 +4,7 @@ from drf_yasg import openapi
 from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 from .views import *
+from .page_views import home_page, tool_page
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -32,7 +33,10 @@ urlpatterns = [
         schema_view.with_ui("swagger", cache_timeout=0),
         name="schema-swagger-ui",
     ),
-    path("home/", home_view, name="home"),
+    path("home/", home_page, name="home"),
+    path("opcoes/retorno-volatilidade/", tool_page, name="return_volatility_page"),
+    path("ferramentas/<slug:slug>/", tool_page, name="tool_page"),
+    path("projetos/<uuid:simulation_id>/reexecutar/", tool_page, name="project_page"),
     path("to_do/", to_do_view, name="to_do"),
     path("user/", include("usuario.urls")),
     path("teoria/", include("teoria_opcao.urls")),

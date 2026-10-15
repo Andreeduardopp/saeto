@@ -2,6 +2,7 @@ import json
 import math
 import statistics
 import uuid
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.template.loader import get_template
@@ -11,7 +12,10 @@ from django.utils.html import escape
 
 from financial_options.models import FinantialModels, FinantialModelsChoices as Choices
 from financial_options.report_html import sanitize_report_html
-from financial_options.report_registry import REGISTRY
+from estocasticos.labels import STAT_LABELS
+from financial_options.report_registry import (
+    MONTE_CARLO_AMERICAN_LIMITS, MONTE_CARLO_EUROPEAN_LIMITS, REGISTRY,
+)
 
 PNG = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -539,23 +543,41 @@ def _sample_std(values):
     return statistics.stdev(values) if len(values) > 1 else 0.0
 
 
-def return_volatility_payload(prices, name=''):
-    """A save payload shaped like the screen's, for any series of prices."""
+# The nine prices of the handbook example, also used by tests/js/ for the screen.
+HANDBOOK_PRICES = [26.27103, 26.17373, 26.48509, 26.37806, 26.00832,
+                   26.25157, 26.41698, 27.14673, 26.57266]
+
+
+def return_volatility_payload(prices, name='', periods_per_year=None, frequency=None):
+    """A save payload shaped like the screen's, for any series of prices.
+
+    ``periods_per_year`` adds the optional annualization the screen only sends when
+    the run was annualized (plan §6).
+    """
     discrete = [(prices[i] - prices[i - 1]) / prices[i - 1] for i in range(1, len(prices))]
     continuous = [math.log(prices[i] / prices[i - 1]) for i in range(1, len(prices))]
+    mean_continuous = statistics.fmean(continuous)
+    volatility_continuous = _sample_std(continuous)
+    parameters = {'periods': len(prices), 'prices': prices}
+    results = {
+        'discrete_returns': discrete,
+        'continuous_returns': continuous,
+        'mean_discrete': statistics.fmean(discrete),
+        'mean_continuous': mean_continuous,
+        'volatility_discrete': _sample_std(discrete),
+        'volatility_continuous': volatility_continuous,
+        'chart': PNG,
+    }
+    if periods_per_year is not None:
+        parameters['frequency'] = 'daily' if frequency is None else frequency
+        parameters['periodsPerYear'] = periods_per_year
+        results['annual_rate_equivalent'] = math.exp(periods_per_year * mean_continuous) - 1
+        results['annual_volatility_continuous'] = math.sqrt(periods_per_year) * volatility_continuous
     return {
         'name': name,
         'model_type': Choices.RETURN_VOLATILITY,
-        'parameters': {'periods': len(prices), 'prices': prices},
-        'results': {
-            'discrete_returns': discrete,
-            'continuous_returns': continuous,
-            'mean_discrete': statistics.fmean(discrete),
-            'mean_continuous': statistics.fmean(continuous),
-            'volatility_discrete': _sample_std(discrete),
-            'volatility_continuous': _sample_std(continuous),
-            'chart': PNG,
-        },
+        'parameters': parameters,
+        'results': results,
     }
 
 
@@ -569,20 +591,60 @@ class ReturnVolatilityTests(LoggedInTestCase):
         results = response.context['results']
         self.assertEqual(results['Número de preços (N)'], 5)
         self.assertEqual(results['Número de retornos (n = N − 1)'], 4)
-        self.assertEqual(results['Volatilidade discreta (por período)'], '8,31%')
-        self.assertEqual(results['Volatilidade contínua (por período)'], '8,10%')
+        self.assertEqual(results['Divisor do desvio-padrão amostral (n − 1 = N − 2)'], 3)
+        self.assertEqual(results['Volatilidade discreta (por período)'], '8,3141%')
+        self.assertEqual(results['Volatilidade contínua (por período)'], '8,1048%')
         table = response.context['tables'][0]
         self.assertEqual(table['headers'][:2], ['Período (t)', 'Preço do ativo S(t)'])
         self.assertEqual(len(table['rows']), 5)
-        self.assertEqual(table['rows'][0], [1, '100,00', '-', '-'])
-        self.assertEqual(table['rows'][2], [3, '98,00', '-6,67%', '-6,90%'])
+        # Four percentage decimals, and a price with the digits it was given.
+        self.assertEqual(table['rows'][0], [1, '100', '-', '-'])
+        self.assertEqual(table['rows'][2], [3, '98', '-6,6667%', '-6,8993%'])
+        self.assertIn('não tem retorno', table['note'])
 
         self.set_language('en')
         response = self.client.get(reverse('view_report', args=[simulation.id]))
         self.assertEqual(response.context['parameters'], {'Number of prices (N)': 5})
-        self.assertEqual(response.context['results']['Mean discrete return (per period)'], '2.08%')
+        self.assertEqual(response.context['results']['Mean discrete return (per period)'], '2.0764%')
         self.assertEqual(response.context['tables'][0]['headers'][1], 'Asset price S(t)')
-        self.assertEqual(response.context['tables'][0]['rows'][4], [5, '107.50', '-2.27%', '-2.30%'])
+        self.assertEqual(response.context['tables'][0]['rows'][4], [5, '107.5', '-2.2727%', '-2.2990%'])
+
+    def test_report_keeps_the_precision_of_the_prices_and_four_decimals_of_the_returns(self):
+        """The nine prices of the handbook, as the screen and the copy show them."""
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+        payload = return_volatility_payload(HANDBOOK_PRICES)
+        simulation.parameters = payload['parameters']
+        simulation.results = payload['results']
+        simulation.save()
+
+        self.set_language('pt')
+        results = self.client.get(reverse('view_report', args=[simulation.id])).context['results']
+        self.assertEqual(results['Número de preços (N)'], 9)
+        self.assertEqual(results['Número de retornos (n = N − 1)'], 8)
+        # Nine prices give eight returns, and the sample divisor is 7.
+        self.assertEqual(results['Divisor do desvio-padrão amostral (n − 1 = N − 2)'], 7)
+        self.assertEqual(results['Retorno médio contínuo (por período)'], '0,1427%')
+        self.assertEqual(results['Volatilidade contínua (por período)'], '1,5485%')
+        rows = self.client.get(reverse('view_report', args=[simulation.id])).context['tables'][0]['rows']
+        # Five decimals of the price survive the report; only the separator changes.
+        self.assertEqual(rows[0], [1, '26,27103', '-', '-'])
+        self.assertEqual(rows[1][1], '26,17373')
+        self.assertEqual(rows[1][3], '-0,3711%')
+
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['results']['Continuous volatility (per period)'], '1.5485%')
+        self.assertEqual(response.context['tables'][0]['rows'][0][1], '26.27103')
+
+    def test_the_four_decimals_belong_to_this_screen_only(self):
+        """Other models keep the precision of their own screens (plan §5)."""
+        simulation = self.create_simulation(Choices.COPELAND_ANTIKAROV)
+        self.set_language('pt')
+        results = self.client.get(reverse('view_report', args=[simulation.id])).context['results']
+        volatility = [value for key, value in results.items() if 'Volatilidade' in key]
+        self.assertTrue(volatility)
+        for value in volatility:
+            self.assertRegex(value, r'^-?\d+,\d{2}%$')
 
     def test_rerun_fills_the_table_with_the_saved_prices(self):
         simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
@@ -614,7 +676,8 @@ class ReturnVolatilityTests(LoggedInTestCase):
         self.assertContains(response, 'min="3"')
         self.assertContains(response, 'max="1000"')
         limits = response.context['limits']
-        self.assertEqual(limits, {'min_prices': 3, 'max_prices': 1000})
+        self.assertEqual(limits, {'min_prices': 3, 'max_prices': 1000,
+                                  'min_periods_per_year': 1, 'max_periods_per_year': 100000})
 
     def test_screen_names_the_count_and_the_price_column(self):
         for language, labels in (
@@ -626,6 +689,159 @@ class ReturnVolatilityTests(LoggedInTestCase):
                 response = self.client.get(reverse('volatilidade_template'))
                 for label in labels:
                     self.assertContains(response, label)
+
+    def test_screen_explains_n_the_returns_and_the_sample_divisor(self):
+        for language, texts in (
+            ('pt', ('Como estes números são obtidos',
+                    'n = N − 1',
+                    'n − 1 = N − 2',
+                    'R(t) = [S(t) − S(t−1)] / S(t−1)',
+                    'r(t) = ln[S(t) / S(t−1)]',
+                    'quatro casas decimais percentuais',
+                    'na unidade dos períodos informados')),
+            ('en', ('How these numbers are obtained',
+                    'n = N − 1',
+                    'n − 1 = N − 2',
+                    'R(t) = [S(t) − S(t−1)] / S(t−1)',
+                    'four percentage decimals',
+                    'in the unit of the periods entered')),
+        ):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('volatilidade_template'))
+                for text in texts:
+                    self.assertContains(response, escape(text))
+                # The divisor of this series is written next to the summary, and the
+                # derivation stays one expansion away from the main action.
+                self.assertContains(response, 'id="statsNote"')
+                self.assertContains(response, 'id="statsDetails"')
+
+    def annualized_simulation(self, periods_per_year=252, frequency='daily'):
+        """The nine prices of the handbook, saved with an annualization."""
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+        payload = return_volatility_payload(HANDBOOK_PRICES, periods_per_year=periods_per_year,
+                                            frequency=frequency)
+        simulation.parameters = payload['parameters']
+        simulation.results = payload['results']
+        simulation.save()
+        return simulation
+
+    def test_report_of_an_annualized_run_shows_m_the_rate_and_the_formulas(self):
+        """The 43,28% and 24,58% of the report, with four decimals (plan §6)."""
+        simulation = self.annualized_simulation()
+
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        parameters = response.context['parameters']
+        self.assertEqual(parameters['Número de preços (N)'], 9)
+        self.assertEqual(parameters['Frequência dos preços'], 'Diária')
+        self.assertEqual(parameters['Períodos por ano (m)'], 252)
+        results = response.context['results']
+        self.assertEqual(results['Períodos por ano (m)'], 252)
+        self.assertEqual(results['Taxa anual equivalente (do retorno logarítmico médio)'], '43,2764%')
+        self.assertEqual(results['Volatilidade anual (contínua)'], '24,5816%')
+        # The per-period results stay, unchanged, next to the annual ones.
+        self.assertEqual(results['Volatilidade contínua (por período)'], '1,5485%')
+        self.assertEqual(results['Retorno médio contínuo (por período)'], '0,1427%')
+        # The annualization prints before the prices table, next to the numbers.
+        annual_table, prices_table = response.context['tables']
+        self.assertEqual(annual_table['title'], 'Anualização')
+        self.assertEqual(len(prices_table['rows']), 9)
+        for text in ('exp(m × média dos log-retornos) − 1',
+                     '√m × desvio-padrão amostral dos log-retornos',
+                     'm = 252 períodos por ano',
+                     'não é o retorno acumulado da janela',
+                     'raiz do tempo pressupõe',
+                     'não uma previsão'):
+            self.assertIn(text, annual_table['note'])
+        self.assertNotIn('rows', annual_table)
+
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters']['Price frequency'], 'Daily')
+        self.assertEqual(response.context['parameters']['Periods per year (m)'], 252)
+        self.assertEqual(
+            response.context['results']['Equivalent annual rate (from the mean log return)'],
+            '43.2764%')
+        self.assertEqual(response.context['results']['Annual volatility (continuous)'], '24.5816%')
+        self.assertEqual(response.context['tables'][0]['title'], 'Annualization')
+        self.assertIn('not the accumulated return of the window',
+                      response.context['tables'][0]['note'])
+
+    def test_a_weekly_annualization_keeps_its_own_m_and_label(self):
+        simulation = self.annualized_simulation(periods_per_year=52, frequency='weekly')
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters']['Frequência dos preços'], 'Semanal')
+        self.assertEqual(response.context['results']['Períodos por ano (m)'], 52)
+        self.assertEqual(response.context['results']['Volatilidade anual (contínua)'], '11,1663%')
+        self.assertIn('m = 52 períodos por ano', response.context['tables'][0]['note'])
+
+    def test_a_project_saved_without_annualization_is_not_reported_as_annualized(self):
+        """A project saved before the option existed re-runs and reports as it was."""
+        simulation = self.create_simulation(Choices.RETURN_VOLATILITY)
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters'], {'Número de preços (N)': 5})
+        for key in response.context['results']:
+            self.assertNotIn('anual', key.lower())
+        # Only the prices table: no annualization block was added.
+        self.assertEqual(len(response.context['tables']), 1)
+
+        rerun = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        # The data block of the screen carries no m, so the option opens switched off.
+        self.assertNotContains(rerun, '"periodsPerYear":')
+        self.assertContains(rerun, 'id="annualizeToggle"')
+
+    def test_rerun_opens_the_project_with_the_annualization_it_was_saved_with(self):
+        simulation = self.annualized_simulation(periods_per_year=52, frequency='weekly')
+        response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
+        initial = response.context['initial_data']
+        self.assertEqual(initial['periodsPerYear'], 52)
+        self.assertEqual(initial['frequency'], 'weekly')
+        self.assertEqual(initial['prices'], HANDBOOK_PRICES)
+        # The screen reads them from this block to open the option already on.
+        self.assertContains(response, '"periodsPerYear": 52')
+
+    def test_screen_offers_the_optional_annualization_with_its_formulas(self):
+        for language, texts in (
+            ('pt', ('2. Configuração', 'Anualizar os resultados (opcional)',
+                    'Frequência dos preços', 'Períodos por ano (m)',
+                    'Diária (252 períodos por ano)', 'Semanal (52 períodos por ano)',
+                    'Mensal (12 períodos por ano)', 'Personalizada',
+                    'convenções usuais, não a contagem de preços',
+                    'Resultados anuais',
+                    'Taxa anual equivalente a partir do retorno logarítmico médio',
+                    'Volatilidade anual (contínua)',
+                    'exp(m × μ) − 1', '√m × σ',
+                    'não a contagem de preços da amostra',
+                    'não é o retorno acumulado da janela',
+                    'não uma previsão garantida')),
+            ('en', ('2. Settings', 'Annualize the results (optional)',
+                    'Price frequency', 'Periods per year (m)',
+                    'Daily (252 periods per year)', 'Weekly (52 periods per year)',
+                    'Monthly (12 periods per year)', 'Custom',
+                    'usual conventions, not a count of the prices',
+                    'Annual results',
+                    'Equivalent annual rate from the mean log return',
+                    'Annual volatility (continuous)',
+                    'exp(m × μ) − 1', '√m × σ',
+                    'not the count of prices in the sample',
+                    'not the accumulated return of the window',
+                    'not a guaranteed forecast')),
+        ):
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('volatilidade_template'))
+                for text in texts:
+                    self.assertContains(response, escape(text))
+                for element in ('id="annualizeToggle"', 'id="annualFrequency"',
+                                'id="periodsPerYear"', 'id="annualBlock"', 'id="annualPending"'):
+                    self.assertContains(response, element)
+                # The range of m comes from the registry, like the range of N.
+                self.assertContains(response, 'max="100000"')
+                # The results section moved down: Data, Settings, Results.
+                self.assertContains(response, '3. Result')
 
     def test_screen_imports_a_file_and_says_how_it_must_be_organised(self):
         for language, texts in (
@@ -746,10 +962,80 @@ class ReturnVolatilitySaveTests(LoggedInTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(FinantialModels.objects.exists())
 
+    def test_an_annualized_run_is_saved_with_m_and_its_annual_results(self):
+        response = self.post(return_volatility_payload(HANDBOOK_PRICES, name='WEGE3 anual',
+                                                       periods_per_year=252))
+        self.assertEqual(response.status_code, 200)
+        simulation = FinantialModels.objects.get(name='WEGE3 anual')
+        self.assertEqual(simulation.parameters['periodsPerYear'], 252)
+        self.assertEqual(simulation.parameters['frequency'], 'daily')
+        # Saved unrounded; the report is what rounds it to four decimals.
+        self.assertAlmostEqual(simulation.results['annual_rate_equivalent'], 0.4327644793, places=10)
+        report = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(report.context['results']['Volatilidade anual (contínua)'], '24,5816%')
+
+    def test_m_must_be_a_whole_number_inside_its_range(self):
+        for periods in (0, -252, 2.5, '252', True, 100001):
+            with self.subTest(periods=periods):
+                payload = return_volatility_payload(self.series(5), periods_per_year=252)
+                payload['parameters']['periodsPerYear'] = periods
+                response = self.post(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('número inteiro de 1 a 100000', response.json()['error'])
+        # A flat series, so even the largest m stays inside the representable range:
+        # an annualization that overflows arrives with a non-finite number instead.
+        for periods in (1, 12, 52, 252, 100000):
+            with self.subTest(periods=periods):
+                payload = return_volatility_payload([100] * 5, name=f'm-{periods}',
+                                                    periods_per_year=periods)
+                self.assertEqual(self.post(payload).status_code, 200)
+        self.assertEqual(FinantialModels.objects.count(), 5)
+
+    def test_an_annualization_without_its_numbers_or_with_a_strange_frequency_is_refused(self):
+        # Annual results with no m: a rate nobody could check.
+        payload = return_volatility_payload(self.series(5), periods_per_year=252)
+        del payload['parameters']['periodsPerYear']
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('precisa dos períodos por ano (m)', response.json()['error'])
+
+        for value in (None, float('inf'), 'x'):
+            with self.subTest(value=value):
+                payload = return_volatility_payload(self.series(5), periods_per_year=252)
+                payload['results']['annual_volatility_continuous'] = value
+                response = self.post(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('devem ser números finitos', response.json()['error'])
+
+        payload = return_volatility_payload(self.series(5), periods_per_year=252)
+        del payload['results']['annual_rate_equivalent']
+        self.assertEqual(self.post(payload).status_code, 400)
+
+        for frequency in ('hourly', '', [], 7):
+            with self.subTest(frequency=frequency):
+                payload = return_volatility_payload(self.series(5), periods_per_year=252,
+                                                    frequency=frequency)
+                response = self.post(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('frequência dos preços não é uma das opções',
+                              response.json()['error'])
+        self.assertFalse(FinantialModels.objects.exists())
+
+    def test_a_run_that_was_not_annualized_is_saved_as_it_is(self):
+        payload = return_volatility_payload(self.series(5), name='por período')
+        self.assertEqual(self.post(payload).status_code, 200)
+        simulation = FinantialModels.objects.get(name='por período')
+        self.assertNotIn('periodsPerYear', simulation.parameters)
+        self.assertNotIn('annual_rate_equivalent', simulation.results)
+
     def test_the_message_follows_the_language_of_the_session(self):
         self.set_language('en')
         response = self.post(return_volatility_payload(self.series(2)))
         self.assertIn('from 3 to 1000 prices', response.json()['error'])
+
+        payload = return_volatility_payload(self.series(5), periods_per_year=0)
+        response = self.post(payload)
+        self.assertIn('whole number from 1 to 100000', response.json()['error'])
 
     def test_models_without_a_payload_rule_are_untouched(self):
         response = self.post({'name': 'bs', 'model_type': Choices.BLACK_SCHOLES,
@@ -985,3 +1271,146 @@ class SimulationListTests(LoggedInTestCase):
         page_size = len(response.context['page_obj'])
         self.assertEqual(content.count('rerun-btn'), page_size)
         self.assertEqual(content.count('View Report') + content.count('Ver Relatório'), page_size)
+
+
+class MonteCarloScreenTests(LoggedInTestCase):
+    """The two Monte Carlo screens: one source for the HTML, the limit and the message."""
+
+    EUROPEAN = {'S0': '100', 'K': '100', 'T': '1', 'r': '5', 'sigma': '20',
+                'num_simulacoes': '1000', 'option_type': 'call'}
+    AMERICAN = {'S0': '100', 'K': '100', 'T': '1', 'r': '5', 'sigma': '20',
+                'num_simulacoes': '1000', 'num_passos': '10', 'option_type': 'put'}
+
+    def post(self, url_name, data, **overrides):
+        return self.client.post(reverse(url_name), {**data, **overrides})
+
+    def test_each_screen_publishes_the_limits_the_server_enforces(self):
+        screens = [
+            ('precificar_opcao', MONTE_CARLO_EUROPEAN_LIMITS),
+            ('precificar_opcao_americana', MONTE_CARLO_AMERICAN_LIMITS),
+        ]
+        for url_name, limits in screens:
+            with self.subTest(url_name=url_name):
+                content = self.client.get(reverse(url_name)).content.decode()
+                self.assertIn('min="%s"' % limits['min_simulations'], content)
+                self.assertIn('max="%s"' % limits['max_simulations'], content)
+                self.assertIn('min="%s"' % limits['min_volatility'], content)
+                self.assertIn('max="%s"' % limits['max_volatility'], content)
+                if 'max_steps' in limits:
+                    self.assertIn('max="%s"' % limits['max_steps'], content)
+
+    def test_the_american_screen_names_its_own_ceiling_not_a_tenfold_one(self):
+        """The HTML offered 100,000 while the server accepted 10,000 (plan section 10, U6)."""
+        content = self.client.get(reverse('precificar_opcao_americana')).content.decode()
+        self.assertIn('max="10000"', content)
+        self.assertNotIn('max="100000"', content)
+        self.assertIn('10.000', content)
+        self.assertNotIn('100.000', content)
+
+        inside = self.post('precificar_opcao_americana', self.AMERICAN, num_simulacoes='10000')
+        self.assertEqual(inside.status_code, 200)
+        outside = self.post('precificar_opcao_americana', self.AMERICAN, num_simulacoes='10001')
+        self.assertEqual(outside.status_code, 400)
+        message = outside.json()['errors']['num_simulacoes']
+        self.assertIn('10.000', message)
+        self.assertNotIn('100.000', message)
+
+    def test_the_european_screen_keeps_its_million_simulations(self):
+        self.assertEqual(self.post('precificar_opcao', self.EUROPEAN).status_code, 200)
+        refused = self.post('precificar_opcao', self.EUROPEAN, num_simulacoes='1000001')
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn('1.000.000', refused.json()['errors']['num_simulacoes'])
+
+    def test_both_screens_answer_in_the_language_of_the_session(self):
+        cases = [
+            ('precificar_opcao', self.EUROPEAN, {'num_simulacoes': '5'}, 'num_simulacoes',
+             'Número de Simulações deve estar entre 1.000 e 1.000.000.',
+             'Number of Simulations must be between 1,000 and 1,000,000.'),
+            ('precificar_opcao_americana', self.AMERICAN, {'num_passos': '5'}, 'num_passos',
+             'Número de Passos no Tempo deve estar entre 10 e 1.000.',
+             'Number of Time Steps must be between 10 and 1,000.'),
+            ('precificar_opcao_americana', self.AMERICAN, {'S0': '0'}, 'S0',
+             'Preço Atual do Ativo (S0) deve ser maior que 0.',
+             'Initial Asset Price (S0) must be greater than 0.'),
+            ('precificar_opcao', self.EUROPEAN, {'option_type': 'straddle'}, 'option_type',
+             'Tipo de Opção: opção inválida.', 'Option Type: invalid option.'),
+        ]
+        for url_name, data, overrides, field, pt, en in cases:
+            for language, expected in (('pt', pt), ('en', en)):
+                with self.subTest(url_name=url_name, overrides=overrides, language=language):
+                    self.set_language(language)
+                    response = self.post(url_name, data, **overrides)
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.json()['errors'][field], expected)
+
+    def test_every_field_that_is_wrong_is_named_at_once(self):
+        response = self.post('precificar_opcao_americana', self.AMERICAN,
+                             S0='abc', K='-1', num_simulacoes='10.5', num_passos='0')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(sorted(response.json()['errors']), ['K', 'S0', 'num_passos', 'num_simulacoes'])
+
+    def test_an_empty_or_missing_field_is_a_message_not_a_server_error(self):
+        for overrides in ({'T': ''}, {'sigma': '   '}, {'r': 'abc'}):
+            with self.subTest(overrides=overrides):
+                response = self.post('precificar_opcao', self.EUROPEAN, **overrides)
+                self.assertEqual(response.status_code, 400)
+        payload = {key: value for key, value in self.EUROPEAN.items() if key != 'K'}
+        response = self.client.post(reverse('precificar_opcao'), payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('K', response.json()['errors'])
+
+    def test_the_results_come_back_as_numbers_and_statistics_by_key(self):
+        """The screen formats them in the session language; the saved run keeps the number."""
+        data = self.post('precificar_opcao', self.EUROPEAN).json()
+        self.assertIsInstance(data['preco_estimado'], float)
+        for table in ('stats_descriptive', 'stats_inferential'):
+            self.assertTrue(data[table])
+            for key, value in data[table].items():
+                self.assertIn(key, STAT_LABELS, 'Label %s in estocasticos/labels.py' % key)
+                self.assertIsInstance(value, float)
+        american = self.post('precificar_opcao_americana', self.AMERICAN).json()
+        self.assertIsInstance(american['preco_estimado'], float)
+
+    def test_a_saved_run_is_reported_in_the_language_it_is_opened_in(self):
+        simulation = FinantialModels.objects.create(
+            usuario=self.user, model_type=Choices.MONTE_CARLO_EUROPEAN, report='online',
+            parameters=FIXTURES[Choices.MONTE_CARLO_EUROPEAN][0],
+            results={'estimated_price': 10.450583572, 'price_plot': PNG, 'distribution_plot': PNG,
+                     'statistics': {'mean': 105.1234567, 'std': 21.2}},
+        )
+        expected = {
+            'pt': ('Preço Estimado da Opção', '10,4506', 'Média', '105,1235'),
+            'en': ('Estimated Option Price', '10.4506', 'Mean', '105.1235'),
+        }
+        for language, (price_label, price, label, stat) in expected.items():
+            with self.subTest(language=language):
+                self.set_language(language)
+                response = self.client.get(reverse('view_report', args=[simulation.id]))
+                self.assertEqual(response.context['results'][price_label], price)
+                table = list(response.context['nested_results'].values())[0]
+                self.assertEqual(table[label], stat)
+
+    def test_a_run_saved_before_the_keys_keeps_the_labels_it_was_saved_with(self):
+        simulation = self.create_simulation(Choices.MONTE_CARLO_EUROPEAN)
+        self.set_language('en')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        table = list(response.context['nested_results'].values())[0]
+        self.assertEqual(table, {'Mean': '105.1', 'Std': '21.2'})
+
+    def test_a_failed_simulation_says_so_without_leaking_its_cause(self):
+        with mock.patch('financial_options.api.views.option_price_use_case',
+                        side_effect=RuntimeError('matrix is singular at row 7')):
+            with self.assertLogs('financial_options.api.views', level='ERROR'):
+                self.set_language('pt')
+                response = self.post('precificar_opcao', self.EUROPEAN)
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()['error'], 'Ocorreu um erro inesperado durante a simulação.')
+        self.assertNotIn('singular', response.json()['error'])
+
+    def test_neither_screen_opens_a_browser_dialog_for_an_error(self):
+        """A modal dialog blocks the screen and cannot be read in the session language."""
+        for url_name in ('precificar_opcao', 'precificar_opcao_americana'):
+            with self.subTest(url_name=url_name):
+                content = self.client.get(reverse(url_name)).content.decode()
+                self.assertNotIn('alert(', content)
+                self.assertIn('role="alert"', content)

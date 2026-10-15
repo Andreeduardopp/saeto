@@ -56,19 +56,22 @@ def option_price_use_case(S0, K, T, r, sigma, num_simulacoes, option_type='call'
     lower_ic = mean_st - (z_score * standard_error)
     upper_ic = mean_st + (z_score * standard_error)
 
+    # By key, not by label: the screen and the report label them in the language
+    # they are read in (estocasticos/labels.py), and the saved run keeps the
+    # number instead of the text one session happened to show.
     statistics = {
         "descriptive": {
-            'Média (ST)': mean_st,
-            'Mediana': np.median(ST),
-            'Desvio Padrão': std_st,
-            'Mínimo': np.min(ST),
-            'Máximo': np.max(ST),
+            'mean': float(mean_st),
+            'median': float(np.median(ST)),
+            'std': float(std_st),
+            'min': float(np.min(ST)),
+            'max': float(np.max(ST)),
         },
         "inferential": {
-            "Média Estimada": mean_st,
-            "Erro Padrão": standard_error,
-            "Limite Inferior (IC 95%)": lower_ic,
-            "Limite Superior (IC 95%)": upper_ic
+            'mean_estimated': float(mean_st),
+            'standard_error': float(standard_error),
+            'ci_lower': float(lower_ic),
+            'ci_upper': float(upper_ic),
         }
     }
 

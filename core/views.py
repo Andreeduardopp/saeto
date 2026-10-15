@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
+from django.utils.http import url_has_allowed_host_and_scheme
 from estocasticos.use_cases.mbg_ito_use_case import GeometricBrownianMotionUseCase
 from estocasticos.use_cases.modelo_reversao_media_use_case import ReversaoMediaUseCase
 from estocasticos.use_cases.monte_carlos_use_case import MonteCarloUseCase
@@ -26,15 +27,20 @@ def perfil_view(request):
 
 def custom_admin_login(request):
     error_message = None
+    destination = request.POST.get('next') or request.GET.get('next', '')
+    if not url_has_allowed_host_and_scheme(destination, {request.get_host()}, require_https=request.is_secure()):
+        destination = ''
     if request.method == "POST":
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
             auth_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+            if destination:
+                return redirect(destination)
             if user.is_superuser:
                 return redirect("/admin/")
             else:
-                return redirect("/home")
+                return redirect("/home/")
         else:
             error_message = "Incorrect username or password."
 
@@ -42,13 +48,14 @@ def custom_admin_login(request):
         form = AuthenticationForm()
 
     return render(
-        request, "admin/login.html", {"form": form, "error_message": error_message}
+        request, "admin/login.html", {"form": form, "error_message": error_message, "next": destination}
     )
 
 
 @login_required(login_url='/admin/login/')
 def home_view(request):
-    return render(request, "site/home/home.html")
+    from .page_views import home_page
+    return home_page(request)
 
 
 @csrf_exempt
@@ -63,7 +70,7 @@ def set_language(request):
 
 def custom_logout(request):
     auth_logout(request)
-    return redirect('login-customizado')
+    return render(request, 'site/home/logged_out.html')
 
 @login_required(login_url='/admin/login/')
 def reference_view(request):

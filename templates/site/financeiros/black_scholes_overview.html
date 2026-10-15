@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -21,7 +22,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'black_scholes_api' %}"
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'black_scholes_api' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Black-Scholes Model{% else %}Modelo Black-Scholes{% endif %}
@@ -36,7 +37,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'black_scholes_merton_api' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'black_scholes_merton_api' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Black-Scholes-Merton Model{% else %}Modelo Black-Scholes-Merton{% endif %}
@@ -51,7 +52,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'generalized_black_scholes_merton' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'generalized_black_scholes_merton' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Generalized Black-Scholes-Merton Model{% else %}Modelo Black-Scholes-Merton Generalizado{% endif %}

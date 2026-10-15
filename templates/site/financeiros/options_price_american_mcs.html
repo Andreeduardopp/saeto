@@ -102,7 +102,7 @@
             {% if language == 'en' %}Risk-Free Rate (r, %):{% else %}Taxa de Juros Livre de Risco (r, %):{% endif %}
         </label>
         <div class="input-group">
-        <input type="number" class="form-control" id="r_american" name="r" value="{{ initial_data.r }}" min="0" max="100" step="0.01" value="5" required>
+        <input type="number" class="form-control" id="r_american" name="r" value="{{ initial_data.r }}" min="{{ limits.min_rate }}" max="{{ limits.max_rate }}" step="0.01" required>
         <span class="input-group-text">%</span>
         </div>
         <ul class="errorlist" id="r_american_errors"></ul>
@@ -112,7 +112,7 @@
             {% if language == 'en' %}Volatility (σ, %):{% else %}Volatilidade (σ, %):{% endif %}
         </label>
         <div class="input-group">
-            <input type="number" class="form-control" id="sigma_american" name="sigma" value="{{ initial_data.sigma }}" min="0.1" max="200" step="0.1" value="20" required>
+            <input type="number" class="form-control" id="sigma_american" name="sigma" value="{{ initial_data.sigma }}" min="{{ limits.min_volatility }}" max="{{ limits.max_volatility }}" step="0.1" required>
             <span class="input-group-text">%</span>
             <ul class="errorlist" id="sigma_american_errors"></ul>
         </div>
@@ -121,14 +121,20 @@
         <label for="num_simulacoes_american">
             {% if language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
         </label>
-        <input type="number" class="form-control" id="num_simulacoes_american" name="num_simulacoes" value="{{ initial_data.num_simulacoes }}" min="1000" max="100000" step="1" required>
+        <input type="number" class="form-control" id="num_simulacoes_american" name="num_simulacoes" value="{{ initial_data.num_simulacoes }}" min="{{ limits.min_simulations }}" max="{{ limits.max_simulations }}" step="1" aria-describedby="num_simulacoes_american_range" required>
+        <p id="num_simulacoes_american_range" class="form-text">
+            {% if language == 'en' %}From {{ limit_text.min_simulations }} to {{ limit_text.max_simulations }} simulations; each one is walked step by step.{% else %}De {{ limit_text.min_simulations }} a {{ limit_text.max_simulations }} simulações; cada uma é percorrida passo a passo.{% endif %}
+        </p>
         <ul class="errorlist" id="num_simulacoes_american_errors"></ul>
     </div>
     <div class="form-group">
         <label for="num_passos">
             {% if language == 'en' %}Number of Time Steps:{% else %}Número de Passos de Tempo:{% endif %}
         </label>
-        <input type="number" class="form-control" id="num_passos" name="num_passos" value="{{ initial_data.num_passos|default:100 }}" min="10" max="1000" step="1" required>
+        <input type="number" class="form-control" id="num_passos" name="num_passos" value="{{ initial_data.num_passos|default:100 }}" min="{{ limits.min_steps }}" max="{{ limits.max_steps }}" step="1" aria-describedby="num_passos_range" required>
+        <p id="num_passos_range" class="form-text">
+            {% if language == 'en' %}From {{ limit_text.min_steps }} to {{ limit_text.max_steps }} time steps.{% else %}De {{ limit_text.min_steps }} a {{ limit_text.max_steps }} passos de tempo.{% endif %}
+        </p>
         <ul class="errorlist" id="num_passos_errors"></ul>
     </div>
     <div class="form-group">
@@ -145,6 +151,7 @@
         </select>
         <ul class="errorlist" id="option_type_errors"></ul>
     </div>
+    <div id="screenErrorAmerican" class="alert alert-danger mt-3" role="alert" style="display: none;"></div>
     <div class="saeto-actions mt-3 mb-4">
         <button type="button" class="btn btn-secondary" onclick="resetMcsAmericanForm()">
             {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
@@ -222,138 +229,133 @@
     </div>
   </div>  
 <script>
-    function clearAmericanErrors() {
-        $('.errorlist').empty();
-    }
+    // One scope per load: this script runs again every time the screen is
+    // loaded, and only the functions the buttons call become global.
+    (function () {
+        // Inputs and results of the last successful run; Save sends exactly this.
+        let mcsAmericanLastRun = null;
+        let mcsAmericanRequest = 0;
+        const lang = '{{ language }}';
+        const format = window.saetoServerScreen.formatNumber;
+        const errorBox = document.getElementById('screenErrorAmerican');
+        const t = lang === 'en'
+            ? { invalid: 'Validation error. Please check the marked fields.',
+                unexpected: 'An unexpected error occurred. Please try again.',
+                offline: 'Could not reach the server. Check your connection.' }
+            : { invalid: 'Erro de validação. Verifique os campos marcados.',
+                unexpected: 'Ocorreu um erro inesperado. Tente novamente.',
+                offline: 'Não foi possível falar com o servidor. Verifique sua conexão.' };
 
-    function displayAmericanErrors(errors) {
-        clearAmericanErrors();
-
-        if (typeof errors !== 'object' || errors === null) {
-            console.error("Expected 'errors' to be an object, but got:", errors);
-            alert("An unexpected error occurred while processing the errors. Please try again.");
-            return;
+        function clearAmericanErrors() {
+            $('.errorlist').empty();
+            showError('');
         }
 
-        for (const field in errors) {
-            if (errors.hasOwnProperty(field)) {
-                const errorList = $(`#${field}_american_errors, #${field}_errors`);
-
-                if (errorList.length === 0) {
-                    console.warn(`No errorlist element found for field: ${field}.`);
-                    continue;
-                }
-
-                let fieldErrors = errors[field];
-                if (typeof fieldErrors === 'string') {
-                    fieldErrors = [fieldErrors];
-                }
-
-                if (Array.isArray(fieldErrors)) {
-                    fieldErrors.forEach(error => {
-                        errorList.append(`<li>${error}</li>`);
-                    });
-                } else {
-                    console.warn(`Unexpected non-array/non-string error format for field '${field}':`, fieldErrors);
-                    errorList.append(`<li>${String(fieldErrors)}</li>`);
-                }
-            }
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.style.display = message ? 'block' : 'none';
         }
-    }
 
-    // Inputs and results of the last successful run; Save sends exactly this.
-    // `var`, not `let`: this script runs again every time the screen is loaded.
-    var mcsAmericanLastRun = null;
-
-    function setMcsAmericanLastRun(run) {
-        mcsAmericanLastRun = run;
-        document.getElementById('saveProjectBtn').disabled = !run;
-    }
-
-    function resetMcsAmericanForm() {
-        document.getElementById('americanOptionForm').reset();
-        clearAmericanErrors();
-        $('#resultSectionAmerican').hide();
-        setMcsAmericanLastRun(null);
-    }
-
-    function submitAmericanOptionForm() {
-        clearAmericanErrors();
-        setMcsAmericanLastRun(null);
-        const parameters = readMcsAmericanParameters();
-        const loadingOverlay = $('#loading-overlay');
-        const form = $('#americanOptionForm');
-        $.ajax({
-            url: form.attr('action'),
-            method: 'POST',
-            data: form.serialize(),
-            beforeSend: function() {
-                loadingOverlay.css('display', 'flex');
-                $('#resultSectionAmerican').hide(); 
-            },
-            success: function(data) {
-                loadingOverlay.hide();
-                $('#resultSectionAmerican').show();
-                $('#estimatedPriceAmerican').text(data.preco_estimado);
-                $('#convergencePlot').attr('src', 'data:image/png;base64,' + data.convergence_plot);
-                $('#convergencePlot').show();
-                $('#pricePlotAmerican').attr('src', 'data:image/png;base64,' + data.price_plot);
-                $('#exerciseBoundaryPlot').attr('src', 'data:image/png;base64,' + data.exercise_boundary_plot);
-                setMcsAmericanLastRun({ parameters, results: readMcsAmericanResults() });
-            },
-            error: function(xhr, status, error) {
-                loadingOverlay.hide();
-                let errorMessage = "Error in simulation. Please check the entered data.";
-                if (xhr.responseJSON) {
-                    if (xhr.responseJSON.errors) {
-                        displayAmericanErrors(xhr.responseJSON.errors);
-                        errorMessage = "Validation error. Please check the marked fields.";
-                    } else if (xhr.responseJSON.error) {
-                        errorMessage = "Simulation error: " + xhr.responseJSON.error;
-                    } else {
-                        errorMessage = "Unknown simulation error.";
-                        console.log("Unexpected error response JSON:", xhr.responseJSON);
-                    }
-                } else {
-                    errorMessage = `Error communicating with the server: ${error || 'Check your connection.'}`;
-                }
-                console.log("Final error message:", errorMessage);
-                alert(errorMessage);
+        // The server names the field and the limit, in the session language.
+        function displayAmericanErrors(errors) {
+            if (typeof errors !== 'object' || errors === null) {
+                showError(t.unexpected);
+                return;
             }
-        });
-    }
+            const loose = [];
+            for (const [field, messages] of Object.entries(errors)) {
+                const list = $(`#${field}_american_errors, #${field}_errors`);
+                const items = Array.isArray(messages) ? messages : [messages];
+                // A message with no field of its own is still shown, never dropped.
+                if (list.length === 0) loose.push(...items);
+                else items.forEach(message => list.first().append($('<li>').text(message)));
+            }
+            showError(loose.length ? loose.join(' ') : t.invalid);
+        }
 
-    function readMcsAmericanParameters() {
-        return {
-            S0: document.getElementById('S0_american').value,
-            K: document.getElementById('K_american').value,
-            T: document.getElementById('T_american').value,
-            r: document.getElementById('r_american').value,
-            sigma: document.getElementById('sigma_american').value,
-            num_simulacoes: document.getElementById('num_simulacoes_american').value,
-            num_passos: document.getElementById('num_passos').value,
-            option_type: document.getElementById('option_type_american').value
+        function setMcsAmericanLastRun(run) {
+            mcsAmericanLastRun = run;
+            document.getElementById('saveProjectBtn').disabled = !run;
+        }
+
+        window.resetMcsAmericanForm = function () {
+            // A response from before Reset must not restore results or Save.
+            mcsAmericanRequest++;
+            $('#loading-overlay').hide();
+            document.getElementById('americanOptionForm').reset();
+            clearAmericanErrors();
+            $('#resultSectionAmerican').hide();
+            setMcsAmericanLastRun(null);
         };
-    }
 
-    function readMcsAmericanResults() {
-        return {
-            preco_estimado: document.getElementById('estimatedPriceAmerican').textContent,
-            price_plot: document.getElementById('pricePlotAmerican').src,
-            exercise_boundary_plot: document.getElementById('exerciseBoundaryPlot').src,
-            convergence_plot: document.getElementById('convergencePlot').src,
+        window.submitAmericanOptionForm = function () {
+            const requestId = ++mcsAmericanRequest;
+            clearAmericanErrors();
+            setMcsAmericanLastRun(null);
+            const parameters = readMcsAmericanParameters();
+            const loadingOverlay = $('#loading-overlay');
+            const form = $('#americanOptionForm');
+            $.ajax({
+                url: form.attr('action'),
+                method: 'POST',
+                data: form.serialize(),
+                beforeSend: function () {
+                    loadingOverlay.css('display', 'flex');
+                    $('#resultSectionAmerican').hide();
+                },
+                success: function (data) {
+                    if (requestId !== mcsAmericanRequest) return;
+                    const plots = {
+                        price_plot: 'data:image/png;base64,' + data.price_plot,
+                        exercise_boundary_plot: 'data:image/png;base64,' + data.exercise_boundary_plot,
+                        convergence_plot: 'data:image/png;base64,' + data.convergence_plot,
+                    };
+                    loadingOverlay.hide();
+                    $('#resultSectionAmerican').show();
+                    $('#estimatedPriceAmerican').text(format(data.preco_estimado, lang));
+                    $('#convergencePlot').attr('src', plots.convergence_plot).show();
+                    $('#pricePlotAmerican').attr('src', plots.price_plot);
+                    $('#exerciseBoundaryPlot').attr('src', plots.exercise_boundary_plot);
+                    // Saved as a number: the report formats it in its own language.
+                    setMcsAmericanLastRun({ parameters, results: {
+                        preco_estimado: data.preco_estimado, ...plots,
+                    } });
+                },
+                error: function (xhr, status, error) {
+                    if (requestId !== mcsAmericanRequest) return;
+                    loadingOverlay.hide();
+                    if (xhr.responseJSON && xhr.responseJSON.errors) displayAmericanErrors(xhr.responseJSON.errors);
+                    else if (xhr.responseJSON && xhr.responseJSON.error) showError(xhr.responseJSON.error);
+                    else showError(xhr.status === 0 ? t.offline : t.unexpected);
+                },
+            });
         };
-    }
 
-    function saveProject() {
-        if (!mcsAmericanLastRun) return;
-        saetoSaveProject({
-            button: document.getElementById('saveProjectBtn'),
-            url: '{% url "save_financial_model" %}',
-            modelType: 'MONTE_CARLO_AMERICAN',
-            parameters: mcsAmericanLastRun.parameters,
-            results: mcsAmericanLastRun.results,
-            lang: '{{ language }}',
-        });
-    }
+        function readMcsAmericanParameters() {
+            return {
+                S0: document.getElementById('S0_american').value,
+                K: document.getElementById('K_american').value,
+                T: document.getElementById('T_american').value,
+                r: document.getElementById('r_american').value,
+                sigma: document.getElementById('sigma_american').value,
+                num_simulacoes: document.getElementById('num_simulacoes_american').value,
+                num_passos: document.getElementById('num_passos').value,
+                option_type: document.getElementById('option_type_american').value
+            };
+        }
+
+        window.saveProject = function () {
+            if (!mcsAmericanLastRun) return;
+            const runAtClick = mcsAmericanLastRun;
+            saetoSaveProject({
+                button: document.getElementById('saveProjectBtn'),
+                url: '{% url "save_financial_model" %}',
+                modelType: 'MONTE_CARLO_AMERICAN',
+                parameters: runAtClick.parameters,
+                results: runAtClick.results,
+                lang: lang,
+                isCurrent: () => mcsAmericanLastRun === runAtClick,
+            });
+        };
+    })();
 </script>

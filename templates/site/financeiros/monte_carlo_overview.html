@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -15,7 +16,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'precificar_opcao' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'precificar_opcao' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Classic Monte Carlo Simulation{% else %}Simulação Clássica de Monte Carlo{% endif %}
@@ -30,7 +31,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'precificar_opcao_americana' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'precificar_opcao_americana' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Least Squares Monte Carlo{% else %}Monte Carlo de Mínimos Quadrados{% endif %}
@@ -45,7 +46,7 @@
             <a
                class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                data-url="{% url 'to_do' %}" {# Replace with your actual URL name #}
-               style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+               style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'to_do' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Quasi Monte Carlo{% else %}Quase Monte Carlo{% endif %}

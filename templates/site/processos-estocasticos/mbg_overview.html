@@ -1,3 +1,4 @@
+{% load navigation %}
 <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-4 text-dark">
@@ -14,7 +15,7 @@
     <div class="row w-100 justify-content-center">
         <div class="col-12 col-md-4 mb-4">
             <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
-                data-url="{% url 'abm' %}" style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                data-url="{% url 'abm' %}" style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'abm' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Arithmetic Brownian Motion{% else %}Movimento
@@ -32,7 +33,7 @@
         <div class="col-12 col-md-4 mb-4">
             <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                 data-url="{% url 'monte_carlos' %}"
-                style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'monte_carlos' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Generalized Brownian Process{% else %}Processo
@@ -49,7 +50,7 @@
         <div class="col-12 col-md-4 mb-4">
             <a class="card nav-link bg-light text-center shadow-sm h-100 d-flex flex-column justify-content-center"
                 data-url="{% url 'mbg_ito' %}" {# Replace with your actual URL name #}
-                style="border-radius: 0.75rem; text-decoration: none; color: inherit;">
+                style="border-radius: 0.75rem; text-decoration: none; color: inherit;" href="{% page_url 'mbg_ito' %}">
                 <div class="card-body">
                     <h2 class="card-title h5 mb-2 text-dark">
                         {% if request.session.language == 'en' %}Generalized Brownian Process Ito{% else %}Processo

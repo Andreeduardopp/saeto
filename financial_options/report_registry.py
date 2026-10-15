@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from estocasticos.labels import stat_label
+from estocasticos.labels import STAT_LABELS, stat_label
 from financial_options.models import FinantialModelsChoices
 
 
@@ -73,6 +73,21 @@ def _money(value, language):
 def _percent(value, language, decimals=2):
     text = _number(value, language, decimals)
     return text if text == '-' else f'{text}%'
+
+
+def _saved_stats(stats, language, decimals=4):
+    """
+    Statistics of a saved run, labelled and formatted in the reader's language.
+
+    A run saves them by key (``estocasticos/labels.py``); runs saved before that
+    carry the labels the screen showed, in the language of that session, and are
+    shown as they were saved rather than relabelled by guesswork.
+    """
+    if not stats:
+        return {}
+    if all(key in STAT_LABELS for key in stats):
+        return _stats(stats, language, decimals)
+    return dict(stats)
 
 
 def _charts(charts):
@@ -142,10 +157,11 @@ def build_cox_ross_report(parameters, results, language):
 
 def build_monte_carlo_european_report(parameters, results, language):
     return {
-        'results': {_t(language, 'Preço Estimado da Opção', 'Estimated Option Price'): results.get('estimated_price')},
-        # The statistic names are the ones the screen showed, in the language it was in.
+        'results': {_t(language, 'Preço Estimado da Opção', 'Estimated Option Price'):
+                    _number(results.get('estimated_price'), language, 4)},
         'nested_results': {
-            _t(language, 'Estatísticas Descritivas (Ativo ST)', 'Descriptive Statistics (Asset Price ST)'): results.get('statistics', {}),
+            _t(language, 'Estatísticas Descritivas (Ativo ST)', 'Descriptive Statistics (Asset Price ST)'):
+                _saved_stats(results.get('statistics'), language),
         },
         'charts': _charts({
             _t(language, 'Convergência do Preço Médio', 'Mean Price Convergence'): results.get('price_plot'),
@@ -157,7 +173,8 @@ def build_monte_carlo_european_report(parameters, results, language):
 
 def build_monte_carlo_american_report(parameters, results, language):
     return {
-        'results': {_t(language, 'Preço Estimado da Opção', 'Estimated Option Price'): results.get('preco_estimado')},
+        'results': {_t(language, 'Preço Estimado da Opção', 'Estimated Option Price'):
+                    _number(results.get('preco_estimado'), language, 4)},
         'nested_results': {},
         'charts': _charts({
             _t(language, 'Trajetórias de Preço Simuladas', 'Simulated Price Paths'): results.get('price_plot'),
@@ -296,11 +313,42 @@ def build_collar_report(parameters, results, language):
     }
 
 
+# --- Monte Carlo option pricing (simulated on the server) --------------------
+
+# One source for the HTML, the server validation and the message of each screen,
+# so the three cannot disagree (plan §10, U6). The two screens share the inputs
+# of the option; only the American one walks the time steps, and its ceiling of
+# simulations is the one its algorithm actually answers for.
+MONTE_CARLO_LIMITS = {
+    'min_rate': 0, 'max_rate': 100,
+    'min_volatility': 0.1, 'max_volatility': 200,
+    'min_simulations': 1000,
+}
+MONTE_CARLO_EUROPEAN_LIMITS = {**MONTE_CARLO_LIMITS, 'max_simulations': 1000000}
+MONTE_CARLO_AMERICAN_LIMITS = {
+    **MONTE_CARLO_LIMITS, 'max_simulations': 10000, 'min_steps': 10, 'max_steps': 1000,
+}
+
+
 # --- Return & volatility (computed in the browser) ---------------------------
 
 # The screen, the restore and this validation share one size rule (plan §3): the
 # feedback asks for at least 300 prices, and 1,000 is the explicit limit.
-RETURN_VOLATILITY_LIMITS = {'min_prices': 3, 'max_prices': 1000}
+# `periods_per_year` is the m of the optional annualization: a convention the user
+# picks (252, 52, 12 or their own), never a count of the prices in the sample. The
+# cap keeps m a plausible frequency; minute data of a trading year is near 98,000.
+RETURN_VOLATILITY_LIMITS = {
+    'min_prices': 3, 'max_prices': 1000,
+    'min_periods_per_year': 1, 'max_periods_per_year': 100000,
+}
+
+# The frequencies the screen offers and the m each one suggests. `custom` carries
+# no suggestion: the user writes m.
+RETURN_VOLATILITY_FREQUENCIES = {'daily': 252, 'weekly': 52, 'monthly': 12, 'custom': None}
+
+# Saved by the screen only when the run was annualized, so a project saved before
+# this option existed re-runs and is reported with no annualization attributed to it.
+RETURN_VOLATILITY_ANNUAL_KEYS = ('annual_rate_equivalent', 'annual_volatility_continuous')
 
 
 def _finite(value):
@@ -356,6 +404,43 @@ def validate_return_volatility(parameters, results, language):
         if _finite(results.get(key)) is None:
             return _t(language, 'As médias e volatilidades devem ser números finitos.',
                       'The means and volatilities must be finite numbers.')
+    return _validate_annualization(parameters, results, language)
+
+
+def _validate_annualization(parameters, results, language):
+    """The optional annualization: present as a whole, or absent as a whole."""
+    min_m = RETURN_VOLATILITY_LIMITS['min_periods_per_year']
+    max_m = RETURN_VOLATILITY_LIMITS['max_periods_per_year']
+    periods_per_year = parameters.get('periodsPerYear')
+    if periods_per_year is None:
+        # Nothing annual may arrive without the m it was computed with: it would be
+        # reported as a rate nobody can check.
+        if any(key in results for key in RETURN_VOLATILITY_ANNUAL_KEYS):
+            return _t(language,
+                      'A anualização precisa dos períodos por ano (m).',
+                      'The annualization needs the number of periods per year (m).')
+        return None
+
+    count = _finite(periods_per_year)
+    if count is None or count != int(count) or not min_m <= count <= max_m:
+        return _t(language,
+                  f'Os períodos por ano (m) devem ser um número inteiro de {min_m} a {max_m}.',
+                  f'The periods per year (m) must be a whole number from {min_m} to {max_m}.')
+
+    frequency = parameters.get('frequency')
+    # Anything but one of the four names of the screen, including a value no dict
+    # could even look up, is refused here instead of failing further on.
+    if frequency is not None and (not isinstance(frequency, str)
+                                  or frequency not in RETURN_VOLATILITY_FREQUENCIES):
+        return _t(language,
+                  'A frequência dos preços não é uma das opções da tela.',
+                  'The price frequency is not one of the options of the screen.')
+
+    for key in RETURN_VOLATILITY_ANNUAL_KEYS:
+        if _finite(results.get(key)) is None:
+            return _t(language,
+                      'A taxa anual equivalente e a volatilidade anual devem ser números finitos.',
+                      'The equivalent annual rate and the annual volatility must be finite numbers.')
     return None
 
 
@@ -365,6 +450,72 @@ def _return_percent(value, language):
         return _percent(float(value) * 100, language)
     except (TypeError, ValueError):
         return '-'
+
+
+# The display rules of this screen only: four percentage decimals, the precision
+# the table, the summary and the copy to Excel also show (plan §5). The other
+# models keep the precision their own screens were built with.
+RETURN_VOLATILITY_DECIMALS = 4
+
+
+def _rv_percent(value, language):
+    """A return kept as a fraction (0.001742), shown as a percentage (0,1742%)."""
+    try:
+        return _percent(float(value) * 100, language, RETURN_VOLATILITY_DECIMALS)
+    except (TypeError, ValueError):
+        return '-'
+
+
+def _rv_price(value, language):
+    """A price with every digit it holds, so the report matches what was typed."""
+    number = _finite(value)
+    if number is None:
+        return '-'
+    # The shortest text that reads back as the same number: the five decimals of
+    # the handbook example survive, and 100 is not shown as 100,00. Only a value
+    # far outside the prices a screen accepts would take the exponent form.
+    text = repr(number)
+    if 'e' in text or 'E' in text:
+        text = f'{number:.12f}'.rstrip('0').rstrip('.')
+    elif text.endswith('.0'):
+        text = text[:-2]
+    return text if language == 'en' else text.replace('.', ',')
+
+
+def _annual_report_rows(parameters, results, language):
+    """The annual results and their formulas, only for a run that was annualized."""
+    periods_per_year = parameters.get('periodsPerYear')
+    if periods_per_year is None:
+        return {}, []
+    unit = _t(language, 'períodos por ano', 'periods per year')
+    note = _t(language,
+              'Taxa anual equivalente = exp(m × média dos log-retornos) − 1. '
+              'Volatilidade anual = √m × desvio-padrão amostral dos log-retornos. '
+              'A anualização usa os retornos contínuos, em frações, com '
+              f'm = {periods_per_year} {unit}. '
+              'A taxa anual equivalente não é o retorno acumulado da janela '
+              '(S final / S inicial − 1). A escala pela raiz do tempo pressupõe '
+              'retornos sem autocorrelação e variância estável; o resultado é uma '
+              'conversão de unidade, não uma previsão. Os resultados por período '
+              'seguem acima, sem alteração.',
+              'Equivalent annual rate = exp(m × mean log return) − 1. '
+              'Annual volatility = √m × sample standard deviation of the log returns. '
+              'The annualization uses the continuous returns, as fractions, with '
+              f'm = {periods_per_year} {unit}. '
+              'The equivalent annual rate is not the accumulated return of the window '
+              '(final S / initial S − 1). Scaling by the square root of time assumes '
+              'returns with no autocorrelation and a stable variance; the result is a '
+              'change of unit, not a forecast. The per-period results above are unchanged.')
+    annual = {
+        _t(language, 'Períodos por ano (m)', 'Periods per year (m)'): periods_per_year,
+        _t(language, 'Taxa anual equivalente (do retorno logarítmico médio)',
+           'Equivalent annual rate (from the mean log return)'):
+            _rv_percent(results.get('annual_rate_equivalent'), language),
+        _t(language, 'Volatilidade anual (contínua)', 'Annual volatility (continuous)'):
+            _rv_percent(results.get('annual_volatility_continuous'), language),
+    }
+    # A table with a note and no rows prints as the explanation of the block above.
+    return annual, [{'title': _t(language, 'Anualização', 'Annualization'), 'note': note}]
 
 
 def build_return_volatility_report(parameters, results, language):
@@ -377,9 +528,9 @@ def build_return_volatility_report(parameters, results, language):
         has_return = 0 < index <= len(discrete)
         rows.append([
             index + 1,
-            _number(price, language),
-            _return_percent(discrete[index - 1], language) if has_return else '-',
-            _return_percent(continuous[index - 1], language) if has_return and index <= len(continuous) else '-',
+            _rv_price(price, language),
+            _rv_percent(discrete[index - 1], language) if has_return else '-',
+            _rv_percent(continuous[index - 1], language) if has_return and index <= len(continuous) else '-',
         ])
     headers = [
         _t(language, 'Período (t)', 'Period (t)'),
@@ -387,17 +538,30 @@ def build_return_volatility_report(parameters, results, language):
         _t(language, 'Retorno Discreto', 'Discrete Return'),
         _t(language, 'Retorno Contínuo', 'Continuous Return'),
     ]
+    annual_results, annual_tables = _annual_report_rows(parameters, results, language)
+    # The annualization comes before the prices table, which can run for pages.
     return {
         'results': {
             _t(language, 'Número de preços (N)', 'Number of prices (N)'): len(prices),
             _t(language, 'Número de retornos (n = N − 1)', 'Number of returns (n = N − 1)'): len(discrete),
-            _t(language, 'Retorno médio discreto (por período)', 'Mean discrete return (per period)'): _return_percent(results.get('mean_discrete'), language),
-            _t(language, 'Retorno médio contínuo (por período)', 'Mean continuous return (per period)'): _return_percent(results.get('mean_continuous'), language),
-            _t(language, 'Volatilidade discreta (por período)', 'Discrete volatility (per period)'): _return_percent(results.get('volatility_discrete'), language),
-            _t(language, 'Volatilidade contínua (por período)', 'Continuous volatility (per period)'): _return_percent(results.get('volatility_continuous'), language),
+            # The divisor the student checks the volatility against, spelled out.
+            _t(language, 'Divisor do desvio-padrão amostral (n − 1 = N − 2)',
+               'Sample standard deviation divisor (n − 1 = N − 2)'): max(len(discrete) - 1, 0),
+            _t(language, 'Retorno médio discreto (por período)', 'Mean discrete return (per period)'): _rv_percent(results.get('mean_discrete'), language),
+            _t(language, 'Retorno médio contínuo (por período)', 'Mean continuous return (per period)'): _rv_percent(results.get('mean_continuous'), language),
+            _t(language, 'Volatilidade discreta (por período)', 'Discrete volatility (per period)'): _rv_percent(results.get('volatility_discrete'), language),
+            _t(language, 'Volatilidade contínua (por período)', 'Continuous volatility (per period)'): _rv_percent(results.get('volatility_continuous'), language),
+            **annual_results,
         },
-        'tables': [{
+        'tables': annual_tables + [{
             'title': _t(language, 'Preços e retornos por período', 'Prices and returns by period'),
+            'note': _t(language,
+                       'O primeiro período não tem retorno, porque não existe preço anterior. '
+                       'Os preços conservam a precisão informada; os retornos aparecem com quatro '
+                       'casas decimais percentuais, como na tela e na cópia para o Excel.',
+                       'The first period has no return, because there is no previous price. '
+                       'Prices keep the precision they were given; returns show four percentage '
+                       'decimals, as on the screen and in the copy to Excel.'),
             'headers': headers,
             'rows': rows,
         }],
@@ -760,6 +924,7 @@ REGISTRY: dict[str, ModelSpec] = {
         },
         param_labels=MONTE_CARLO_PARAM_LABELS,
         value_labels=OPTION_TYPE_VALUE_LABELS,
+        limits=MONTE_CARLO_EUROPEAN_LIMITS,
     ),
     FinantialModelsChoices.MONTE_CARLO_AMERICAN: ModelSpec(
         template='site/financeiros/options_price_american_mcs.html',
@@ -770,6 +935,7 @@ REGISTRY: dict[str, ModelSpec] = {
         },
         param_labels=MONTE_CARLO_PARAM_LABELS,
         value_labels=OPTION_TYPE_VALUE_LABELS,
+        limits=MONTE_CARLO_AMERICAN_LIMITS,
     ),
     FinantialModelsChoices.FDM_EUROPEAN: ModelSpec(
         template='site/financeiros/fdm_european.html',
@@ -886,8 +1052,17 @@ REGISTRY: dict[str, ModelSpec] = {
         # holds N, so projects saved before the label changed still re-run.
         defaults={'periods': 5, 'prices': [100, 105, 98, 110, 107.5]},
         param_labels={
-            'pt': {'periods': 'Número de preços (N)', 'prices': 'Preços do ativo'},
-            'en': {'periods': 'Number of prices (N)', 'prices': 'Asset prices'},
+            # `frequency` and `periodsPerYear` only exist when the run was annualized.
+            'pt': {'periods': 'Número de preços (N)', 'prices': 'Preços do ativo',
+                   'frequency': 'Frequência dos preços', 'periodsPerYear': 'Períodos por ano (m)'},
+            'en': {'periods': 'Number of prices (N)', 'prices': 'Asset prices',
+                   'frequency': 'Price frequency', 'periodsPerYear': 'Periods per year (m)'},
+        },
+        value_labels={
+            'pt': {'frequency': {'daily': 'Diária', 'weekly': 'Semanal',
+                                 'monthly': 'Mensal', 'custom': 'Personalizada'}},
+            'en': {'frequency': {'daily': 'Daily', 'weekly': 'Weekly',
+                                 'monthly': 'Monthly', 'custom': 'Custom'}},
         },
         table_params=('prices',),
         limits=RETURN_VOLATILITY_LIMITS,

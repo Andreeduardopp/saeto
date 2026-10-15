@@ -38,7 +38,7 @@
             {% if language == 'en' %}Risk-Free Rate (r, %):{% else %}Taxa de Juros Livre de Risco (r, %):{% endif %}
         </label>
         <div class="input-group">
-        <input type="number" class="form-control" id="r" name="r" value="{{ initial_data.r }}" min="0" max="100" step="0.01" value="5" required>
+        <input type="number" class="form-control" id="r" name="r" value="{{ initial_data.r }}" min="{{ limits.min_rate }}" max="{{ limits.max_rate }}" step="0.01" required>
         <span class="input-group-text">%</span>
         </div>
         <ul class="errorlist" id="r_errors"></ul>
@@ -48,7 +48,7 @@
             {% if language == 'en' %}Volatility (σ, %):{% else %}Volatilidade (σ, %):{% endif %}
         </label>
         <div class="input-group">
-            <input type="number" class="form-control" id="sigma" name="sigma" value="{{ initial_data.sigma }}" min="0.1" max="200" step="0.1" value="20" required>
+            <input type="number" class="form-control" id="sigma" name="sigma" value="{{ initial_data.sigma }}" min="{{ limits.min_volatility }}" max="{{ limits.max_volatility }}" step="0.1" required>
             <span class="input-group-text">%</span>
             <ul class="errorlist" id="sigma_errors"></ul>
         </div>
@@ -57,7 +57,10 @@
         <label for="num_simulacoes">
             {% if language == 'en' %}Number of Simulations:{% else %}Número de Simulações:{% endif %}
         </label>
-        <input type="number" class="form-control" id="num_simulacoes" name="num_simulacoes" value="{{ initial_data.num_simulacoes }}" min="1000" max="1000000" step="1" required>
+        <input type="number" class="form-control" id="num_simulacoes" name="num_simulacoes" value="{{ initial_data.num_simulacoes }}" min="{{ limits.min_simulations }}" max="{{ limits.max_simulations }}" step="1" aria-describedby="num_simulacoes_range" required>
+        <p id="num_simulacoes_range" class="form-text">
+            {% if language == 'en' %}From {{ limit_text.min_simulations }} to {{ limit_text.max_simulations }} simulations.{% else %}De {{ limit_text.min_simulations }} a {{ limit_text.max_simulations }} simulações.{% endif %}
+        </p>
         <ul class="errorlist" id="num_simulacoes_errors"></ul>
     </div>
     <div class="form-group">
@@ -74,6 +77,7 @@
         </select>
         <ul class="errorlist" id="option_type_errors"></ul>
     </div>
+    <div id="screenError" class="alert alert-danger mt-3" role="alert" style="display: none;"></div>
     <div class="saeto-actions mt-3 mb-4">
         <button type="button" class="btn btn-secondary" onclick="resetMcsForm()">
             {% if language == 'en' %}Reset{% else %}Reiniciar{% endif %}
@@ -187,150 +191,129 @@
     </div>
   </div>
   
+{{ stat_labels|json_script:"statLabelsEuropean" }}
 <script>
-    function clearErrors() {
-        $('.errorlist').empty(); 
-    }
+    // One scope per load: this script runs again every time the screen is
+    // loaded, and only the functions the buttons call become global.
+    (function () {
+        // Inputs and results of the last successful run; Save sends exactly this.
+        let mcsLastRun = null;
+        let mcsRequest = 0;
+        const lang = '{{ language }}';
+        const format = window.saetoServerScreen.formatNumber;
+        const fillStats = window.saetoServerScreen.fillStats;
+        const labels = JSON.parse(document.getElementById('statLabelsEuropean').textContent);
+        const errorBox = document.getElementById('screenError');
+        const t = lang === 'en'
+            ? { invalid: 'Validation error. Please check the marked fields.',
+                unexpected: 'An unexpected error occurred. Please try again.',
+                offline: 'Could not reach the server. Check your connection.' }
+            : { invalid: 'Erro de validação. Verifique os campos marcados.',
+                unexpected: 'Ocorreu um erro inesperado. Tente novamente.',
+                offline: 'Não foi possível falar com o servidor. Verifique sua conexão.' };
 
-    function displayErrors(errors) {
-        clearErrors();
-
-        if (typeof errors !== 'object' || errors === null) {
-            console.error("Expected 'errors' to be an object, but got:", errors);
-            alert("Ocorreu um erro inesperado ao processar os erros. Por favor, tente novamente.");
-            return;
+        function clearErrors() {
+            $('.errorlist').empty();
+            showError('');
         }
 
-        for (const field in errors) {
-            if (errors.hasOwnProperty(field)) {
-                const errorList = $(`#${field}_errors`);
-
-                if (errorList.length === 0) {
-                    console.warn(`No errorlist element found for field: ${field}. Looking for #${field}_errors`);
-                    continue; 
-                }
-
-                let fieldErrors = errors[field];
-                if (typeof fieldErrors === 'string') {
-                    fieldErrors = [fieldErrors];
-                }
-
-                if (Array.isArray(fieldErrors)) {
-                    fieldErrors.forEach(error => {
-                        errorList.append(`<li>${error}</li>`);
-                    });
-                } else {
-                    console.warn(`Unexpected non-array/non-string error format for field '${field}':`, fieldErrors);
-                    errorList.append(`<li>${fieldErrors}</li>`); // Display it as is, better than nothing
-                }
-            }
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.style.display = message ? 'block' : 'none';
         }
-    }
 
-    // Inputs and results of the last successful run; Save sends exactly this.
-    // `var`, not `let`: this script runs again every time the screen is loaded.
-    var mcsLastRun = null;
-
-    function setMcsLastRun(run) {
-        mcsLastRun = run;
-        document.getElementById('saveProjectBtn').disabled = !run;
-    }
-
-    function resetMcsForm() {
-        document.getElementById('precificacaoOpcaoForm').reset();
-        clearErrors();
-        $('#resultSection').hide();
-        setMcsLastRun(null);
-    }
-
-    function submitMonteCarloForm() {
-        clearErrors();
-        setMcsLastRun(null);
-        const parameters = readMcsParameters();
-        const form = $('#precificacaoOpcaoForm');
-        $.ajax({
-            url: form.attr('action'),
-            method: 'POST',
-            data: form.serialize(),
-            success: function(data) {
-                $('#resultSection').show();
-                $('#estimatedPrice').text(data.preco_estimado);
-                $('#pricePlot').attr('src', 'data:image/png;base64,' + data.price_plot);
-                $('#distributionPlot').attr('src', 'data:image/png;base64,' + data.distribution_plot);
-                function fillTable(tableId, dataObj) {
-                        const tbody = $(tableId + ' tbody');
-                        tbody.empty();
-                        for (const [key, value] of Object.entries(dataObj)) {
-                            let displayValue = (!isNaN(parseFloat(value)) && isFinite(value)) ? parseFloat(value).toFixed(4) : value;
-                            
-                            if(key.includes("Limite") || key.includes("Limit")) {
-                                displayValue = `<strong>${displayValue}</strong>`;
-                            }
-                            tbody.append(`<tr><td>${key}</td><td>${displayValue}</td></tr>`);
-                        }
-                    }
-                fillTable('#descStatsTable', data.stats_descriptive);
-                fillTable('#infStatsTable', data.stats_inferential);
-                setMcsLastRun({ parameters, results: readMcsResults() });
-            },
-            error: function(xhr, status, error) {
-                let errorMessage = "Erro na simulação. Por favor, verifique os dados inseridos.";
-                if (xhr.responseJSON) {
-                    if (xhr.responseJSON.errors) {
-                        displayErrors(xhr.responseJSON.errors);
-                        errorMessage = "Erro de validação. Verifique os campos marcados.";
-                    } else if (xhr.responseJSON.error) {
-                        errorMessage = "Erro na simulação: " + xhr.responseJSON.error;
-                    } else {
-                        errorMessage = "Erro desconhecido na simulação.";
-                        console.log("Unexpected error response JSON:", xhr.responseJSON);
-                    }
-                } else {
-                    errorMessage = `Erro na comunicação com o servidor: ${error || 'Verifique sua conexão.'}`;
-                }
-                console.log("Final error message:", errorMessage);
-                alert(errorMessage); 
+        // The server names the field and the limit, in the session language.
+        function displayErrors(errors) {
+            if (typeof errors !== 'object' || errors === null) {
+                showError(t.unexpected);
+                return;
             }
-        });
-    }
-
-    function readMcsParameters() {
-        return {
-            S0: document.getElementById('S0').value,
-            K: document.getElementById('K').value,
-            T: document.getElementById('T').value,
-            r: document.getElementById('r').value,
-            sigma: document.getElementById('sigma').value,
-            num_simulacoes: document.getElementById('num_simulacoes').value,
-            option_type: document.getElementById('option_type').value
-        };
-    }
-
-    function readMcsResults() {
-        const statistics = {};
-        document.querySelectorAll('#descStatsTable tbody tr').forEach(row => {
-            const cells = row.getElementsByTagName('td');
-            if (cells.length === 2) {
-                statistics[cells[0].textContent] = cells[1].textContent;
+            const loose = [];
+            for (const [field, messages] of Object.entries(errors)) {
+                const list = $(`#${field}_errors`);
+                const items = Array.isArray(messages) ? messages : [messages];
+                // A message with no field of its own is still shown, never dropped.
+                if (list.length === 0) loose.push(...items);
+                else items.forEach(message => list.append($('<li>').text(message)));
             }
-        });
-        return {
-            estimated_price: document.getElementById('estimatedPrice').textContent,
-            price_plot: document.getElementById('pricePlot').src,
-            distribution_plot: document.getElementById('distributionPlot').src,
-            statistics: statistics
-        };
-    }
+            showError(loose.length ? loose.join(' ') : t.invalid);
+        }
 
-    function saveProject() {
-        if (!mcsLastRun) return;
-        saetoSaveProject({
-            button: document.getElementById('saveProjectBtn'),
-            url: '{% url "save_financial_model" %}',
-            modelType: 'MONTE_CARLO_EUROPEAN',
-            parameters: mcsLastRun.parameters,
-            results: mcsLastRun.results,
-            lang: '{{ language }}',
-        });
-    }
+        function setMcsLastRun(run) {
+            mcsLastRun = run;
+            document.getElementById('saveProjectBtn').disabled = !run;
+        }
+
+        window.resetMcsForm = function () {
+            // A response from before Reset must not restore results or Save.
+            mcsRequest++;
+            document.getElementById('precificacaoOpcaoForm').reset();
+            clearErrors();
+            $('#resultSection').hide();
+            setMcsLastRun(null);
+        };
+
+        window.submitMonteCarloForm = function () {
+            const requestId = ++mcsRequest;
+            clearErrors();
+            setMcsLastRun(null);
+            const parameters = readMcsParameters();
+            const form = $('#precificacaoOpcaoForm');
+            $.ajax({
+                url: form.attr('action'),
+                method: 'POST',
+                data: form.serialize(),
+                success: function (data) {
+                    if (requestId !== mcsRequest) return;
+                    const plots = {
+                        price_plot: 'data:image/png;base64,' + data.price_plot,
+                        distribution_plot: 'data:image/png;base64,' + data.distribution_plot,
+                    };
+                    $('#resultSection').show();
+                    $('#estimatedPrice').text(format(data.preco_estimado, lang));
+                    $('#pricePlot').attr('src', plots.price_plot);
+                    $('#distributionPlot').attr('src', plots.distribution_plot);
+                    fillStats(document.querySelector('#descStatsTable tbody'), data.stats_descriptive, labels, lang);
+                    fillStats(document.querySelector('#infStatsTable tbody'), data.stats_inferential, labels, lang);
+                    // Saved as numbers: the report formats them in its own language.
+                    setMcsLastRun({ parameters, results: {
+                        estimated_price: data.preco_estimado, ...plots,
+                        statistics: data.stats_descriptive,
+                    } });
+                },
+                error: function (xhr, status, error) {
+                    if (requestId !== mcsRequest) return;
+                    if (xhr.responseJSON && xhr.responseJSON.errors) displayErrors(xhr.responseJSON.errors);
+                    else if (xhr.responseJSON && xhr.responseJSON.error) showError(xhr.responseJSON.error);
+                    else showError(xhr.status === 0 ? t.offline : t.unexpected);
+                },
+            });
+        };
+
+        function readMcsParameters() {
+            return {
+                S0: document.getElementById('S0').value,
+                K: document.getElementById('K').value,
+                T: document.getElementById('T').value,
+                r: document.getElementById('r').value,
+                sigma: document.getElementById('sigma').value,
+                num_simulacoes: document.getElementById('num_simulacoes').value,
+                option_type: document.getElementById('option_type').value
+            };
+        }
+
+        window.saveProject = function () {
+            if (!mcsLastRun) return;
+            const runAtClick = mcsLastRun;
+            saetoSaveProject({
+                button: document.getElementById('saveProjectBtn'),
+                url: '{% url "save_financial_model" %}',
+                modelType: 'MONTE_CARLO_EUROPEAN',
+                parameters: runAtClick.parameters,
+                results: runAtClick.results,
+                lang: lang,
+                isCurrent: () => mcsLastRun === runAtClick,
+            });
+        };
+    })();
 </script>

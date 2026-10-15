@@ -1,10 +1,10 @@
 {% block content_home %}
 <div class="container">
-    <h1>{% if request.session.language == 'en' %}Prisoner's Dilemma{% else %}Dilema do Prisioneiro{% endif %}</h1>
+    <h1>{% if language == 'en' %}Prisoner's Dilemma{% else %}Dilema do Prisioneiro{% endif %}</h1>
 
     <div class="text-center mb-4">
         <button class="btn btn-info" type="button" data-bs-toggle="modal" data-bs-target="#dilemaPrisioneiroExplanationModal">
-            {% if request.session.language == 'en' %}Learn More{% else %}Saiba Mais{% endif %}
+            {% if language == 'en' %}Learn More{% else %}Saiba Mais{% endif %}
         </button>
     </div>
 
@@ -13,63 +13,71 @@
         <div class="row">
             <div class="col-md-4">
                 <div class="form-group">
-                    <label for="strategy1">{% if request.session.language == 'en' %}Player 1 Strategy{% else %}Estratégia do Jogador 1{% endif %}</label>
+                    <label for="strategy1">{% if language == 'en' %}Player 1 Strategy{% else %}Estratégia do Jogador 1{% endif %}</label>
                     <select name="strategy1" id="strategy1" class="form-control">
-                        <option value="always_cooperate" {% if strategy1 == 'always_cooperate' %}selected{% endif %}>{% if request.session.language == 'en' %}Always Cooperate{% else %}Sempre Cooperar{% endif %}</option>
-                        <option value="always_defect" {% if strategy1 == 'always_defect' %}selected{% endif %}>{% if request.session.language == 'en' %}Always Defect{% else %}Sempre Trair{% endif %}</option>
-                        <option value="tit_for_tat" {% if strategy1 == 'tit_for_tat' %}selected{% endif %}>{% if request.session.language == 'en' %}Tit for Tat{% else %}Olho por Olho{% endif %}</option>
-                        <option value="random" {% if strategy1 == 'random' %}selected{% endif %}>{% if request.session.language == 'en' %}Random{% else %}Aleatório{% endif %}</option>
+                        <option value="always_cooperate" {% if strategy1 == 'always_cooperate' %}selected{% endif %}>{% if language == 'en' %}Always Cooperate{% else %}Sempre Cooperar{% endif %}</option>
+                        <option value="always_defect" {% if strategy1 == 'always_defect' %}selected{% endif %}>{% if language == 'en' %}Always Defect{% else %}Sempre Trair{% endif %}</option>
+                        <option value="tit_for_tat" {% if strategy1 == 'tit_for_tat' %}selected{% endif %}>{% if language == 'en' %}Tit for Tat{% else %}Olho por Olho{% endif %}</option>
+                        <option value="random" {% if strategy1 == 'random' %}selected{% endif %}>{% if language == 'en' %}Random{% else %}Aleatório{% endif %}</option>
                     </select>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="form-group">
-                    <label for="strategy2">{% if request.session.language == 'en' %}Player 2 Strategy{% else %}Estratégia do Jogador 2{% endif %}</label>
+                    <label for="strategy2">{% if language == 'en' %}Player 2 Strategy{% else %}Estratégia do Jogador 2{% endif %}</label>
                     <select name="strategy2" id="strategy2" class="form-control">
-                        <option value="always_cooperate" {% if strategy2 == 'always_cooperate' %}selected{% endif %}>{% if request.session.language == 'en' %}Always Cooperate{% else %}Sempre Cooperar{% endif %}</option>
-                        <option value="always_defect" {% if strategy2 == 'always_defect' %}selected{% endif %}>{% if request.session.language == 'en' %}Always Defect{% else %}Sempre Trair{% endif %}</option>
-                        <option value="tit_for_tat" {% if strategy2 == 'tit_for_tat' %}selected{% endif %}>{% if request.session.language == 'en' %}Tit for Tat{% else %}Olho por Olho{% endif %}</option>
-                        <option value="random" {% if strategy2 == 'random' %}selected{% endif %}>{% if request.session.language == 'en' %}Random{% else %}Aleatório{% endif %}</option>
+                        <option value="always_cooperate" {% if strategy2 == 'always_cooperate' %}selected{% endif %}>{% if language == 'en' %}Always Cooperate{% else %}Sempre Cooperar{% endif %}</option>
+                        <option value="always_defect" {% if strategy2 == 'always_defect' %}selected{% endif %}>{% if language == 'en' %}Always Defect{% else %}Sempre Trair{% endif %}</option>
+                        <option value="tit_for_tat" {% if strategy2 == 'tit_for_tat' %}selected{% endif %}>{% if language == 'en' %}Tit for Tat{% else %}Olho por Olho{% endif %}</option>
+                        <option value="random" {% if strategy2 == 'random' %}selected{% endif %}>{% if language == 'en' %}Random{% else %}Aleatório{% endif %}</option>
                     </select>
                 </div>
             </div>
             <div class="col-md-2">
                 <div class="form-group">
-                    <label for="iterations">{% if request.session.language == 'en' %}Iterations{% else %}Iterações{% endif %}</label>
-                    <input type="number" name="iterations" id="iterations" class="form-control" value="{{ iterations|default:10 }}">
+                    <label for="iterations">{% if language == 'en' %}Iterations{% else %}Iterações{% endif %}</label>
+                    <input type="number" name="iterations" id="iterations" class="form-control"
+                           value="{{ iterations }}" min="{{ min_iterations }}" max="{{ max_iterations }}"
+                           step="1" aria-describedby="iterationsRange" required>
+                    <p id="iterationsRange" class="form-text">
+                        {% if language == 'en' %}From {{ min_iterations_text }} to {{ max_iterations_text }} rounds.{% else %}De {{ min_iterations_text }} a {{ max_iterations_text }} rodadas.{% endif %}
+                    </p>
                 </div>
             </div>
             <div class="col-md-2">
-                <button type="submit" class="btn btn-primary" style="margin-top: 30px;">{% if request.session.language == 'en' %}Simulate{% else %}Simular{% endif %}</button>
+                <button type="submit" id="dilemaSubmit" class="btn btn-primary" style="margin-top: 30px;">{% if language == 'en' %}Simulate{% else %}Simular{% endif %}</button>
             </div>
         </div>
+        <div id="dilemaError" class="alert alert-danger mt-3" role="alert" style="display: none;"></div>
     </form>
 
-    <div id="simulation-results" class="mt-5">
-    {% if result %}
-        <h2>{% if request.session.language == 'en' %}Results{% else %}Resultados{% endif %}</h2>
-        <p><strong>{% if request.session.language == 'en' %}Player 1 Score:{% else %}Pontuação do Jogador 1:{% endif %}</strong> {{ result.payoff1 }}</p>
-        <p><strong>{% if request.session.language == 'en' %}Player 2 Score:{% else %}Pontuação do Jogador 2:{% endif %}</strong> {{ result.payoff2 }}</p>
+    <div id="simulation-results" class="mt-5" aria-live="polite" style="display: none;">
+        <h2>{% if language == 'en' %}Results{% else %}Resultados{% endif %}</h2>
+        <p><strong>{% if language == 'en' %}Player 1 Score:{% else %}Pontuação do Jogador 1:{% endif %}</strong> <span id="player1Score"></span></p>
+        <p><strong>{% if language == 'en' %}Player 2 Score:{% else %}Pontuação do Jogador 2:{% endif %}</strong> <span id="player2Score"></span></p>
 
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>{% if request.session.language == 'en' %}Iteration{% else %}Iteração{% endif %}</th>
-                    <th>{% if request.session.language == 'en' %}Player 1{% else %}Jogador 1{% endif %}</th>
-                    <th>{% if request.session.language == 'en' %}Player 2{% else %}Jogador 2{% endif %}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for move1 in result.history1 %}
-                <tr>
-                    <td>{{ forloop.counter }}</td>
-                    <td>{{ move1 }}</td>
-                    <td>{{ result.history2|slice:forloop.counter0|last }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
+        <div class="table-responsive">
+            <table class="table">
+                <caption id="historyRange"></caption>
+                <thead>
+                    <tr>
+                        <th scope="col">{% if language == 'en' %}Iteration{% else %}Iteração{% endif %}</th>
+                        <th scope="col">{% if language == 'en' %}Player 1{% else %}Jogador 1{% endif %}</th>
+                        <th scope="col">{% if language == 'en' %}Player 2{% else %}Jogador 2{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+        <div id="historyPager" class="d-flex align-items-center gap-2">
+            <button type="button" id="historyPrevious" class="btn btn-secondary btn-sm">
+                {% if language == 'en' %}Previous{% else %}Anteriores{% endif %}
+            </button>
+            <button type="button" id="historyNext" class="btn btn-secondary btn-sm">
+                {% if language == 'en' %}Next{% else %}Próximas{% endif %}
+            </button>
+            <span id="historyPage"></span>
+        </div>
     </div>
 </div>
 <div class="modal fade" id="dilemaPrisioneiroExplanationModal" tabindex="-1" aria-labelledby="dilemaPrisioneiroExplanationModalLabel" aria-hidden="true">
@@ -77,14 +85,14 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="dilemaPrisioneiroExplanationModalLabel">
-            <h4>{% if request.session.language == 'en' %}Diving Deeper into the Prisoner's Dilemma{% else %}Aprofundando no Dilema do Prisioneiro{% endif %}</h4>
+            <h4>{% if language == 'en' %}Diving Deeper into the Prisoner's Dilemma{% else %}Aprofundando no Dilema do Prisioneiro{% endif %}</h4>
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-            <h5>{% if request.session.language == 'en' %}The Concept{% else %}O Conceito{% endif %}</h5>
+            <h5>{% if language == 'en' %}The Concept{% else %}O Conceito{% endif %}</h5>
             <p>
-                {% if request.session.language == 'en' %}
+                {% if language == 'en' %}
                 The Prisoner's Dilemma is a standard example of a game analyzed in game theory that shows why two completely rational individuals might not cooperate, even if it appears that it is in their best interests to do so. It was originally framed by Merrill Flood and Melvin Dresher while working at RAND in 1950.
                 {% else %}
                 O Dilema do Prisioneiro é um exemplo padrão de um jogo analisado na teoria dos jogos que mostra por que dois indivíduos completamente racionais podem não cooperar, mesmo que pareça ser do interesse deles fazê-lo. Foi originalmente formulado por Merrill Flood e Melvin Dresher enquanto trabalhavam na RAND em 1950.
@@ -93,9 +101,9 @@
 
             ---
 
-            <h5>{% if request.session.language == 'en' %}The Rules of the Game (Payoff Matrix){% else %}As Regras do Jogo (Matriz de Pagamentos){% endif %}</h5>
+            <h5>{% if language == 'en' %}The Rules of the Game (Payoff Matrix){% else %}As Regras do Jogo (Matriz de Pagamentos){% endif %}</h5>
             <p>
-                {% if request.session.language == 'en' %}
+                {% if language == 'en' %}
                 In each round, both players simultaneously choose to Cooperate or Defect. The outcome is determined by both choices, as defined by the payoff matrix below (Scores are listed as: Player 1 Score, Player 2 Score):
                 {% else %}
                 Em cada rodada, ambos os jogadores escolhem simultaneamente Cooperar ou Trair. O resultado é determinado pelas duas escolhas, conforme definido pela matriz de pagamentos abaixo (Pontuações listadas como: Pontuação Jogador 1, Pontuação Jogador 2):
@@ -106,43 +114,43 @@
                     <tr>
                         <th></th>
                         <th></th>
-                        <th colspan="2">{% if request.session.language == 'en' %}Player 2's Move{% else %}Jogada do Jogador 2{% endif %}</th>
+                        <th colspan="2">{% if language == 'en' %}Player 2's Move{% else %}Jogada do Jogador 2{% endif %}</th>
                     </tr>
                     <tr>
                         <th></th>
                         <th></th>
-                        <th>{% if request.session.language == 'en' %}Cooperate{% else %}Cooperar{% endif %}</th>
-                        <th>{% if request.session.language == 'en' %}Defect{% else %}Trair{% endif %}</th>
+                        <th>{% if language == 'en' %}Cooperate{% else %}Cooperar{% endif %}</th>
+                        <th>{% if language == 'en' %}Defect{% else %}Trair{% endif %}</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <th rowspan="2" class="align-middle">{% if request.session.language == 'en' %}Player 1's Move{% else %}Jogada do Jogador 1{% endif %}</th>
-                        <th>{% if request.session.language == 'en' %}Cooperate{% else %}Cooperar{% endif %}</th>
-                        <td>3, 3<br><small>{% if request.session.language == 'en' %}Mutual Cooperation{% else %}Cooperação Mútua{% endif %}</small></td>
-                        <td>0, 5<br><small>{% if request.session.language == 'en' %}Player 1 Sucker, Player 2 Temptation{% else %}1 Enganado, 2 Tentado{% endif %}</small></td>
+                        <th rowspan="2" class="align-middle">{% if language == 'en' %}Player 1's Move{% else %}Jogada do Jogador 1{% endif %}</th>
+                        <th>{% if language == 'en' %}Cooperate{% else %}Cooperar{% endif %}</th>
+                        <td>3, 3<br><small>{% if language == 'en' %}Mutual Cooperation{% else %}Cooperação Mútua{% endif %}</small></td>
+                        <td>0, 5<br><small>{% if language == 'en' %}Player 1 Sucker, Player 2 Temptation{% else %}1 Enganado, 2 Tentado{% endif %}</small></td>
                     </tr>
                     <tr>
-                        <th>{% if request.session.language == 'en' %}Defect{% else %}Trair{% endif %}</th>
-                        <td>5, 0<br><small>{% if request.session.language == 'en' %}Player 1 Temptation, Player 2 Sucker{% else %}1 Tentado, 2 Enganado{% endif %}</small></td>
-                        <td>1, 1<br><small>{% if request.session.language == 'en' %}Mutual Defection{% else %}Traição Mútua{% endif %}</small></td>
+                        <th>{% if language == 'en' %}Defect{% else %}Trair{% endif %}</th>
+                        <td>5, 0<br><small>{% if language == 'en' %}Player 1 Temptation, Player 2 Sucker{% else %}1 Tentado, 2 Enganado{% endif %}</small></td>
+                        <td>1, 1<br><small>{% if language == 'en' %}Mutual Defection{% else %}Traição Mútua{% endif %}</small></td>
                     </tr>
                 </tbody>
             </table>
 
             ---
 
-            <h5>{% if request.session.language == 'en' %}The Strategies{% else %}As Estratégias{% endif %}</h5>
+            <h5>{% if language == 'en' %}The Strategies{% else %}As Estratégias{% endif %}</h5>
             <ul>
-                <li><strong>{% if request.session.language == 'en' %}Always Cooperate (AllC):{% else %}Sempre Cooperar (AllC):{% endif %}</strong> {% if request.session.language == 'en' %}This strategy consists of always cooperating, regardless of the opponent's previous move.{% else %}Esta estratégia consiste em sempre cooperar, independentemente da jogada anterior do oponente.{% endif %}</li>
-                <li><strong>{% if request.session.language == 'en' %}Always Defect (AllD):{% else %}Sempre Trair (AllD):{% endif %}</strong> {% if request.session.language == 'en' %}This strategy consists of always defecting, regardless of the opponent's previous move.{% else %}Esta estratégia consiste em sempre trair, independentemente da jogada anterior do oponente.{% endif %}</li>
-                <li><strong>{% if request.session.language == 'en' %}Tit for Tat (TFT):{% else %}Olho por Olho (OPO):{% endif %}</strong> {% if request.session.language == 'en' %}This strategy starts by cooperating and then mimics the opponent's previous move. If the opponent cooperates, it cooperates. If the opponent defects, it defects.{% else %}Esta estratégia começa cooperando e depois imita a jogada anterior do oponente. Se o oponente coopera, ele coopera. Se o oponente trai, ele trai.{% endif %}</li>
-                <li><strong>{% if request.session.language == 'en' %}Random (Rand):{% else %}Aleatório (Aleat):{% endif %}</strong> {% if request.session.language == 'en' %}This strategy consists of randomly choosing between cooperating and defecting.{% else %}Esta estratégia consiste em escolher aleatoriamente entre cooperar e trair.{% endif %}</li>
+                <li><strong>{% if language == 'en' %}Always Cooperate (AllC):{% else %}Sempre Cooperar (AllC):{% endif %}</strong> {% if language == 'en' %}This strategy consists of always cooperating, regardless of the opponent's previous move.{% else %}Esta estratégia consiste em sempre cooperar, independentemente da jogada anterior do oponente.{% endif %}</li>
+                <li><strong>{% if language == 'en' %}Always Defect (AllD):{% else %}Sempre Trair (AllD):{% endif %}</strong> {% if language == 'en' %}This strategy consists of always defecting, regardless of the opponent's previous move.{% else %}Esta estratégia consiste em sempre trair, independentemente da jogada anterior do oponente.{% endif %}</li>
+                <li><strong>{% if language == 'en' %}Tit for Tat (TFT):{% else %}Olho por Olho (OPO):{% endif %}</strong> {% if language == 'en' %}This strategy starts by cooperating and then mimics the opponent's previous move. If the opponent cooperates, it cooperates. If the opponent defects, it defects.{% else %}Esta estratégia começa cooperando e depois imita a jogada anterior do oponente. Se o oponente coopera, ele coopera. Se o oponente trai, ele trai.{% endif %}</li>
+                <li><strong>{% if language == 'en' %}Random (Rand):{% else %}Aleatório (Aleat):{% endif %}</strong> {% if language == 'en' %}This strategy consists of randomly choosing between cooperating and defecting.{% else %}Esta estratégia consiste em escolher aleatoriamente entre cooperar e trair.{% endif %}</li>
             </ul>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-              {% if request.session.language == 'en' %}Close{% else %}Fechar{% endif %}
+              {% if language == 'en' %}Close{% else %}Fechar{% endif %}
           </button>
         </div>
       </div>
@@ -150,85 +158,112 @@
   </div>
 {% endblock %}
 <script>
-    document.addEventListener('submit', function(event) {
-        if (event.target.id === 'dilema-form') {
-            event.preventDefault();
+(function () {
+    // One listener on this form, not on the document: the screen is loaded again
+    // on every visit, and a listener left on the document would run once per
+    // visit for a single click.
+    const form = document.getElementById('dilema-form');
+    const lang = '{{ language }}';
+    const pageSize = Number('{{ history_page_size }}') || 50;
+    const results = document.getElementById('simulation-results');
+    const body = document.getElementById('historyBody');
+    const errorBox = document.getElementById('dilemaError');
+    const submitButton = document.getElementById('dilemaSubmit');
+    const previous = document.getElementById('historyPrevious');
+    const next = document.getElementById('historyNext');
+    const pager = document.getElementById('historyPager');
+    const t = lang === 'en'
+        ? { running: 'Simulating...', run: 'Simulate', cooperate: 'Cooperate', defect: 'Defect',
+            unexpected: 'An unexpected error occurred. Please try again.',
+            offline: 'Could not reach the server. Check your connection.',
+            rounds: (from, to, total) => `Rounds ${from} to ${to} of ${total}.`,
+            page: (page, pages) => `Page ${page} of ${pages}` }
+        : { running: 'Simulando...', run: 'Simular', cooperate: 'Cooperar', defect: 'Trair',
+            unexpected: 'Ocorreu um erro inesperado. Tente novamente.',
+            offline: 'Não foi possível falar com o servidor. Verifique sua conexão.',
+            rounds: (from, to, total) => `Rodadas ${from} a ${to} de ${total}.`,
+            page: (page, pages) => `Página ${page} de ${pages}` };
 
-            const form = event.target;
-            const url = form.dataset.action;
-            const csrftoken = form.querySelector('input[name="csrfmiddlewaretoken"]').value;
-            const formData = new FormData(form);
-            const submitButton = form.querySelector('button[type="submit"]');
-            const language = "{{ request.session.language }}";
+    let history = [], page = 0, controller = null, sequence = 0;
 
-            const simulatingText = language === 'en' ? 'Simulating...' : 'Simulando...';
-            const simulateText = language === 'en' ? 'Simulate' : 'Simular';
+    const move = value => value === 'cooperate' ? t.cooperate : value === 'defect' ? t.defect : value;
 
-            if (submitButton) {
-                submitButton.disabled = true;
-                submitButton.textContent = simulatingText;
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.style.display = message ? 'block' : 'none';
+    }
+
+    /** One page of rounds; a long game is read page by page, never all at once. */
+    function renderPage() {
+        const pages = Math.max(1, Math.ceil(history.length / pageSize));
+        page = Math.min(Math.max(page, 0), pages - 1);
+        const from = page * pageSize;
+        const shown = history.slice(from, from + pageSize);
+        body.replaceChildren(...shown.map((round, index) => {
+            const row = document.createElement('tr');
+            for (const text of [String(from + index + 1), move(round[0]), move(round[1])]) {
+                const cell = document.createElement('td');
+                cell.textContent = text;
+                row.appendChild(cell);
             }
+            return row;
+        }));
+        document.getElementById('historyRange').textContent =
+            t.rounds(from + 1, from + shown.length, history.length);
+        document.getElementById('historyPage').textContent = t.page(page + 1, pages);
+        pager.hidden = pages === 1;
+        previous.disabled = page === 0;
+        next.disabled = page >= pages - 1;
+    }
 
-            fetch(url, {
+    previous.addEventListener('click', () => { page--; renderPage(); });
+    next.addEventListener('click', () => { page++; renderPage(); });
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const requestId = ++sequence;
+        // A reply to the previous click must not land on this one's results.
+        controller?.abort();
+        controller = new AbortController();
+        showError('');
+        results.style.display = 'none';
+        submitButton.disabled = true;
+        submitButton.textContent = t.running;
+        try {
+            const response = await fetch(form.dataset.action, {
                 method: 'POST',
-                body: formData,
+                body: new FormData(form),
                 headers: {
-                    'X-CSRFToken': csrftoken
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultsDiv = document.getElementById('simulation-results');
-                if (resultsDiv && data.result) {
-                    let historyRows = '';
-                    data.result.history1.forEach((move1, index) => {
-                        const move2 = data.result.history2[index];
-                        historyRows += `<tr><td>${index + 1}</td><td>${move1}</td><td>${move2}</td></tr>`;
-                    });
-
-                    const resultsTitle = language === 'en' ? 'Results' : 'Resultados';
-                    const p1ScoreText = language === 'en' ? 'Player 1 Score' : 'Pontuação do Jogador 1';
-                    const p2ScoreText = language === 'en' ? 'Player 2 Score' : 'Pontuação do Jogador 2';
-                    const iterationText = language === 'en' ? 'Iteration' : 'Iteração';
-                    const p1Text = language === 'en' ? 'Player 1' : 'Jogador 1';
-                    const p2Text = language === 'en' ? 'Player 2' : 'Jogador 2';
-
-                    resultsDiv.innerHTML = `
-                        <h2>${resultsTitle}</h2>
-                        <p><strong>${p1ScoreText}:</strong> ${data.result.payoff1}</p>
-                        <p><strong>${p2ScoreText}:</strong> ${data.result.payoff2}</p>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>${iterationText}</th>
-                                    <th>${p1Text}</th>
-                                    <th>${p2Text}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${historyRows}
-                            </tbody>
-                        </table>
-                    `;
-                } else if (resultsDiv) {
-                    const noResultsText = language === 'en' ? 'No results returned.' : 'Nenhum resultado retornado.';
-                    resultsDiv.innerHTML = `<p>${noResultsText}</p>`;
-                }
-            })
-            .catch(error => {
-                console.error('Form submission error:', error);
-                const resultsDiv = document.getElementById('simulation-results');
-                if (resultsDiv) {
-                    const errorText = language === 'en' ? 'An error occurred while running the simulation.' : 'Ocorreu um erro ao rodar a simulação.';
-                    resultsDiv.innerHTML = `<p style="color: red;">${errorText}</p>`;
-                }
-            })
-            .finally(() => {
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = simulateText;
-                }
+                    'X-CSRFToken': form.querySelector('input[name="csrfmiddlewaretoken"]').value,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: controller.signal,
             });
+            const data = (await response.json().catch(() => null)) || {};
+            if (requestId !== sequence) return;
+            if (!response.ok || !data.result) {
+                showError(data.error || t.unexpected);
+                return;
+            }
+            history = data.result.history1.map((own, index) => [own, data.result.history2[index]]);
+            page = 0;
+            document.getElementById('player1Score').textContent = data.result.payoff1;
+            document.getElementById('player2Score').textContent = data.result.payoff2;
+            renderPage();
+            results.style.display = 'block';
+        } catch (error) {
+            if (error.name === 'AbortError' || requestId !== sequence) return;
+            console.error(error);
+            showError(t.offline);
+        } finally {
+            if (requestId === sequence) {
+                submitButton.disabled = false;
+                submitButton.textContent = t.run;
+            }
         }
     });
+
+    // Leaving the screen drops an answer that is still on its way.
+    window.saetoLifecycle?.register(() => { sequence++; controller?.abort(); });
+})();
 </script>

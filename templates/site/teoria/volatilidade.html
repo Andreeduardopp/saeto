@@ -50,6 +50,12 @@
     .rv-mode-option input { margin-top: 4px; }
     .rv-mode-option .rv-hint { margin-top: 2px; }
     .rv-import { margin-bottom: 16px; }
+    .rv-paste textarea { min-height: 10rem; resize: vertical; font-variant-numeric: tabular-nums; }
+    .rv-paste textarea[aria-invalid="true"] { border-color: #a71d2a; }
+    .rv-paste-errors { max-height: 12rem; overflow-y: auto; }
+    .rv-paste .rv-preview { overflow-wrap: anywhere; }
+    .rv-screen button:focus-visible, .rv-screen input:focus-visible,
+    .rv-screen textarea:focus-visible { outline: 2px solid #0069d9; outline-offset: 2px; }
     .rv-dropzone {
         border: 2px dashed #adb5bd;
         border-radius: 8px;
@@ -181,14 +187,25 @@
     .rv-screen table.rv-summary th { vertical-align: middle; }
     .rv-screen table.rv-summary .rv-value { font-variant-numeric: tabular-nums; font-weight: 600; }
     .rv-meta { font-size: 0.9rem; color: #495057; margin: 0; font-variant-numeric: tabular-nums; }
+    .rv-toggle { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; font-weight: 600; }
+    .rv-toggle input { margin-top: 5px; }
+    .rv-config-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 16px; }
+    .rv-config-row .rv-field { flex: 0 1 260px; }
+    .rv-annual { margin-top: 20px; padding-top: 12px; border-top: 1px solid #dee2e6; }
+    .rv-annual .rv-annual-title { margin: 0; }
+    .rv-screen table.rv-annual-table th[scope="row"] { font-weight: 500; }
     .rv-chart { position: relative; height: 360px; margin-top: 20px; }
     .rv-details { margin-top: 20px; }
     .rv-details > summary { cursor: pointer; font-weight: 600; }
+    .rv-screen .rv-stats-details { margin-top: 10px; }
+    .rv-screen .rv-stats-details > summary { font-size: 0.9rem; font-weight: 500; }
+    .rv-screen .rv-stats-details code { white-space: nowrap; }
     .rv-screen table.rv-returns { margin-top: 12px; background-color: #ffffff; }
     .rv-screen table.rv-returns td { font-variant-numeric: tabular-nums; }
     @media (max-width: 575.98px) {
         .rv-count-row .rv-apply { margin-top: 0; }
         .rv-count-row .rv-field { flex-basis: 100%; }
+        .rv-config-row .rv-field { flex-basis: 100%; }
         .rv-screen table.rv-prices th.rv-row-index { width: 4.5rem; }
         .rv-results-head .saeto-actions { justify-content: flex-start; }
         .rv-chart { height: 260px; }
@@ -236,6 +253,15 @@
                     </span>
                 </label>
                 <label class="rv-mode-option">
+                    <input type="radio" name="dataMode" id="dataModePaste" value="paste">
+                    <span>
+                        <strong>{% if request.session.language == 'en' %}Paste prices{% else %}Colar preços{% endif %}</strong>
+                        <span class="rv-hint d-block">
+                            {% if request.session.language == 'en' %}Paste a column and check the preview before applying it.{% else %}Cole uma coluna e confira a prévia antes de aplicar.{% endif %}
+                        </span>
+                    </span>
+                </label>
+                <label class="rv-mode-option">
                     <input type="radio" name="dataMode" id="dataModeFile" value="file">
                     <span>
                         <strong>{% if request.session.language == 'en' %}Import a file{% else %}Importar um arquivo{% endif %}</strong>
@@ -247,7 +273,39 @@
             </div>
         </fieldset>
 
-        <div class="rv-import" id="importSection">
+        <div class="rv-paste mb-3" id="pasteSection" hidden>
+            <label class="font-weight-bold" for="pastedPrices">
+                {% if request.session.language == 'en' %}Paste the prices{% else %}Cole os preços{% endif %}
+            </label>
+            <p class="rv-hint mb-2" id="pasteHelp">
+                {% if request.session.language == 'en' %}
+                One price per line, from the oldest to the most recent. Use a dot or comma for decimals, with no thousands separator or header. From {{ limits.min_prices }} to {{ limits.max_prices }} prices; N is counted automatically.
+                {% else %}
+                Um preço por linha, do mais antigo para o mais recente. Use vírgula ou ponto decimal, sem separador de milhar ou cabeçalho. De {{ limits.min_prices }} a {{ limits.max_prices }} preços; N é contado automaticamente.
+                {% endif %}
+            </p>
+            <textarea id="pastedPrices" class="form-control" rows="6" spellcheck="false"
+                      aria-describedby="pasteHelp pasteStatus pasteErrors"
+                      placeholder="100&#10;105&#10;{% if request.session.language == 'en' %}98.5{% else %}98,5{% endif %}"></textarea>
+            <div class="rv-preview" id="pastePreview" hidden>
+                <p class="font-weight-bold mb-1">
+                    {% if request.session.language == 'en' %}Paste preview{% else %}Prévia da colagem{% endif %}
+                </p>
+                <p class="rv-meta" id="pasteCounts"></p>
+                <p class="rv-hint" id="pasteSample"></p>
+            </div>
+            <p class="rv-hint" id="pasteStatus" role="status" aria-live="polite"></p>
+            <div class="rv-error-summary" id="pasteErrors" hidden>
+                <p class="mb-1" id="pasteErrorsTitle"></p>
+                <ul class="rv-paste-errors" id="pasteErrorsList"></ul>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="pasteFirstError"></button>
+            </div>
+            <button type="button" class="btn btn-primary mt-2" id="usePastedPrices" disabled>
+                {% if request.session.language == 'en' %}Use prices{% else %}Usar preços{% endif %}
+            </button>
+        </div>
+
+        <div class="rv-import" id="importSection" hidden>
             <div class="rv-dropzone" id="dropZone">
                 <label class="font-weight-bold mb-2 d-block" for="priceFileInput">
                     {% if request.session.language == 'en' %}Import a file with the prices{% else %}Importar um arquivo com os preços{% endif %}
@@ -402,9 +460,16 @@
                     {% if request.session.language == 'en' %}Apply{% else %}Aplicar{% endif %}
                 </button>
             </div>
+            <p class="rv-hint" id="manualImportSuggestion" hidden>
+                {% if request.session.language == 'en' %}For more than 30 prices, you can save typing by importing a file.{% else %}Acima de 30 preços, você pode evitar a digitação importando um arquivo.{% endif %}
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="suggestImportButton">
+                    {% if request.session.language == 'en' %}Import CSV or Excel{% else %}Importar CSV ou Excel{% endif %}
+                </button>
+            </p>
         </form>
 
         <div class="rv-check" id="inputCheck" aria-live="polite">
+            <strong id="appliedSeriesLabel" hidden>{% if request.session.language == 'en' %}Applied series{% else %}Série aplicada{% endif %}</strong>
             <span><strong class="rv-number" id="checkPrices">0</strong>
                 {% if request.session.language == 'en' %}prices{% else %}preços{% endif %}</span>
             <span><strong class="rv-number" id="checkReturns">0</strong>
@@ -485,6 +550,53 @@
         </div>
     </section>
 
+    <section class="rv-card" id="configSection" aria-labelledby="configSectionTitle">
+        <h2 class="h5 rv-section-title" id="configSectionTitle">
+            {% if request.session.language == 'en' %}2. Settings{% else %}2. Configuração{% endif %}
+        </h2>
+        <p class="rv-hint mb-3" id="configLead">
+            {% if request.session.language == 'en' %}
+            The returns, the mean return and the volatility come out in the unit of the periods entered (per period). Annualizing is optional and leaves those results unchanged.
+            {% else %}
+            Os retornos, o retorno médio e a volatilidade saem na unidade dos períodos informados (por período). Anualizar é opcional e não altera esses resultados.
+            {% endif %}
+        </p>
+        <label class="rv-toggle" for="annualizeToggle">
+            <input type="checkbox" id="annualizeToggle" aria-describedby="configLead">
+            <span>{% if request.session.language == 'en' %}Annualize the results (optional){% else %}Anualizar os resultados (opcional){% endif %}</span>
+        </label>
+        <div class="rv-config-row" id="annualFields" hidden>
+            <div class="rv-field">
+                <label for="annualFrequency">
+                    {% if request.session.language == 'en' %}Price frequency{% else %}Frequência dos preços{% endif %}
+                </label>
+                <select id="annualFrequency" class="form-control" aria-describedby="frequencyHint">
+                    <option value="daily">{% if request.session.language == 'en' %}Daily (252 periods per year){% else %}Diária (252 períodos por ano){% endif %}</option>
+                    <option value="weekly">{% if request.session.language == 'en' %}Weekly (52 periods per year){% else %}Semanal (52 períodos por ano){% endif %}</option>
+                    <option value="monthly">{% if request.session.language == 'en' %}Monthly (12 periods per year){% else %}Mensal (12 períodos por ano){% endif %}</option>
+                    <option value="custom">{% if request.session.language == 'en' %}Custom{% else %}Personalizada{% endif %}</option>
+                </select>
+                <p class="rv-hint" id="frequencyHint">
+                    {% if request.session.language == 'en' %}
+                    252, 52 and 12 are the usual conventions, not a count of the prices in your sample. You can edit m.
+                    {% else %}
+                    252, 52 e 12 são as convenções usuais, não a contagem de preços da sua amostra. Você pode editar m.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="rv-field">
+                <label for="periodsPerYear">
+                    {% if request.session.language == 'en' %}Periods per year (m){% else %}Períodos por ano (m){% endif %}
+                </label>
+                <input type="number" id="periodsPerYear" class="form-control" inputmode="numeric"
+                       min="{{ limits.min_periods_per_year }}" max="{{ limits.max_periods_per_year }}"
+                       step="1" autocomplete="off" aria-describedby="periodsHint periodsError">
+                <p class="rv-hint" id="periodsHint"></p>
+                <p class="rv-error" id="periodsError" role="alert" hidden></p>
+            </div>
+        </div>
+    </section>
+
     <div class="rv-main-action">
         <button type="button" class="btn btn-primary btn-lg" id="calculateButton">
             {% if request.session.language == 'en' %}Calculate{% else %}Calcular{% endif %}
@@ -495,7 +607,7 @@
     <section class="rv-card" id="resultsContainer" aria-labelledby="resultsTitle" hidden>
         <div class="rv-results-head">
             <h2 class="h5 mb-0" id="resultsTitle" tabindex="-1">
-                {% if request.session.language == 'en' %}2. Results{% else %}2. Resultados{% endif %}
+                {% if request.session.language == 'en' %}3. Results{% else %}3. Resultados{% endif %}
             </h2>
             <div class="saeto-actions">
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="copyTableButton">
@@ -541,9 +653,90 @@
             </tbody>
         </table>
         <p class="rv-meta" id="resultsMeta"></p>
-        <p class="text-muted small mt-2 mb-0">
-            {% if request.session.language == 'en' %}Sample standard deviation (n − 1) of the returns, in the unit of the periods entered; it is not annualized.{% else %}Desvio-padrão amostral (n − 1) dos retornos, na unidade dos períodos informados; não é anualizada.{% endif %}
-        </p>
+        <p class="text-muted small mt-2 mb-0" id="statsNote"></p>
+
+        <details class="rv-details rv-stats-details" id="statsDetails">
+            <summary>
+                {% if request.session.language == 'en' %}How these numbers are obtained{% else %}Como estes números são obtidos{% endif %}
+            </summary>
+            {% if request.session.language == 'en' %}
+            <ul class="small mt-2 mb-0">
+                <li><strong>N</strong> is the number of prices and <strong>n = N − 1</strong> is the number of returns: the first price has no return, because there is no previous price.</li>
+                <li>Discrete return of period t: <code>R(t) = [S(t) − S(t−1)] / S(t−1)</code>.</li>
+                <li>Continuous return (log return) of period t: <code>r(t) = ln[S(t) / S(t−1)]</code>.</li>
+                <li>Mean return: the sum of the n returns divided by n.</li>
+                <li>Volatility: the <strong>sample</strong> standard deviation of the returns, that is, the square root of the sum of the squared deviations from the mean divided by <strong>n − 1 = N − 2</strong>.</li>
+                <li>Returns and volatilities are shown with four percentage decimals; the prices keep the precision you entered. The calculation and the saved project use the full values, with no display rounding.</li>
+                <li>Every figure is in the unit of the periods entered (“per period”). Annualizing is optional: switch it on in “Settings” and the annual results appear in their own block, with the frequency you inform.</li>
+            </ul>
+            {% else %}
+            <ul class="small mt-2 mb-0">
+                <li><strong>N</strong> é o número de preços e <strong>n = N − 1</strong> é o número de retornos: o primeiro preço não tem retorno, porque não existe preço anterior.</li>
+                <li>Retorno discreto do período t: <code>R(t) = [S(t) − S(t−1)] / S(t−1)</code>.</li>
+                <li>Retorno contínuo (log-retorno) do período t: <code>r(t) = ln[S(t) / S(t−1)]</code>.</li>
+                <li>Retorno médio: a soma dos n retornos dividida por n.</li>
+                <li>Volatilidade: desvio-padrão <strong>amostral</strong> dos retornos, isto é, a raiz quadrada da soma dos quadrados dos desvios em relação à média dividida por <strong>n − 1 = N − 2</strong>.</li>
+                <li>Retornos e volatilidades aparecem com quatro casas decimais percentuais; os preços conservam a precisão que você informou. O cálculo e o projeto salvo usam os valores completos, sem arredondamento de apresentação.</li>
+                <li>Todos os números estão na unidade dos períodos informados (“por período”). Anualizar é opcional: ative a opção em “Configuração” e os resultados anuais aparecem em bloco próprio, com a frequência que você informar.</li>
+            </ul>
+            {% endif %}
+        </details>
+
+        <div class="rv-annual" id="annualBlock" hidden>
+            <h3 class="h6 rv-annual-title" id="annualTitle">
+                {% if request.session.language == 'en' %}Annual results{% else %}Resultados anuais{% endif %}
+            </h3>
+            <p class="rv-stale" id="annualPending" role="status" hidden></p>
+            <table class="table table-bordered rv-summary rv-annual-table">
+                <thead>
+                    <tr>
+                        <th scope="col">{% if request.session.language == 'en' %}Measure{% else %}Medida{% endif %}</th>
+                        <th scope="col">{% if request.session.language == 'en' %}Annual value{% else %}Valor anual{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">
+                            {% if request.session.language == 'en' %}Equivalent annual rate from the mean log return{% else %}Taxa anual equivalente a partir do retorno logarítmico médio{% endif %}
+                        </th>
+                        <td class="rv-value" id="annualRate">—</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            {% if request.session.language == 'en' %}Annual volatility (continuous){% else %}Volatilidade anual (contínua){% endif %}
+                        </th>
+                        <td class="rv-value" id="annualVolatility">—</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="rv-meta" id="annualMeta"></p>
+            <details class="rv-details rv-stats-details" id="annualDetails">
+                <summary>
+                    {% if request.session.language == 'en' %}How the annualization is calculated{% else %}Como a anualização é calculada{% endif %}
+                </summary>
+                {% if request.session.language == 'en' %}
+                <ul class="small mt-2 mb-0">
+                    <li>Equivalent annual rate: <code>exp(m × μ) − 1</code>, where <strong>μ</strong> is the mean log return and <strong>m</strong> is the number of periods per year.</li>
+                    <li>Annual volatility: <code>√m × σ</code>, where <strong>σ</strong> is the sample standard deviation of the log returns.</li>
+                    <li>The calculation uses fractions (0.05), not percentages already multiplied by 100, and the <strong>continuous</strong> mean, not the mean of the discrete returns.</li>
+                    <li><strong>m</strong> is a convention you choose (252, 52 or 12 periods per year, for example), not the count of prices in the sample. It is written m to keep it apart from N and n.</li>
+                    <li>The equivalent annual rate is not the accumulated return of the window, <code>S(final) / S(initial) − 1</code>.</li>
+                    <li>Scaling the volatility by the square root of time assumes conditions such as returns with no autocorrelation and a stable variance. The annualization is a change of unit, not a guaranteed forecast.</li>
+                    <li>The per-period results above are unchanged, and switching the option off leaves only them.</li>
+                </ul>
+                {% else %}
+                <ul class="small mt-2 mb-0">
+                    <li>Taxa anual equivalente: <code>exp(m × μ) − 1</code>, em que <strong>μ</strong> é a média dos log-retornos e <strong>m</strong> é o número de períodos por ano.</li>
+                    <li>Volatilidade anual: <code>√m × σ</code>, em que <strong>σ</strong> é o desvio-padrão amostral dos log-retornos.</li>
+                    <li>O cálculo usa frações (0,05), não percentuais já multiplicados por 100, e a média <strong>contínua</strong>, não a média dos retornos discretos.</li>
+                    <li><strong>m</strong> é uma convenção que você escolhe (252, 52 ou 12 períodos por ano, por exemplo), não a contagem de preços da amostra. É escrito m para não se confundir com N e n.</li>
+                    <li>A taxa anual equivalente não é o retorno acumulado da janela, <code>S(final) / S(inicial) − 1</code>.</li>
+                    <li>A escala da volatilidade pela raiz do tempo pressupõe condições como ausência de autocorrelação e estabilidade da variância. A anualização é uma conversão de unidade, não uma previsão garantida.</li>
+                    <li>Os resultados por período acima não mudam, e desativar a opção deixa apenas eles.</li>
+                </ul>
+                {% endif %}
+            </details>
+        </div>
 
         <div class="rv-chart">
             <canvas id="returnsChart"></canvas>
@@ -616,6 +809,13 @@
     };
     const MIN_PRICES = limits.min;
     const MAX_PRICES = limits.max;
+    // The optional annualization: m is a convention the user picks, so it has its
+    // own range, also shared with the save validation.
+    const annualLimits = {
+        min: Number('{{ limits.min_periods_per_year }}') || core.MIN_PERIODS_PER_YEAR,
+        max: Number('{{ limits.max_periods_per_year }}') || core.MAX_PERIODS_PER_YEAR,
+    };
+    const DEFAULT_FREQUENCY = 'daily';
     const T = {
         pt: {
             placeholder: 'Preço',
@@ -638,6 +838,14 @@
             pendingAction: 'Ajuste a tabela ao número de preços (N) para calcular.',
             importPending: 'Importe um arquivo com os preços para calcular.',
             importInvalid: 'A série em memória tem preços a corrigir. Importe o arquivo novamente ou use “Preencher manualmente”.',
+            pastePending: 'Cole a coluna, confira a prévia e use “Usar preços” antes de calcular.',
+            pasteEmpty: 'A colagem é um rascunho. A série aplicada só muda ao usar “Usar preços”.',
+            pasteDraft: 'Rascunho não aplicado. Os resultados ainda correspondem à série aplicada; confira a prévia e use “Usar preços”.',
+            pasteInvalid: 'Corrija os erros da colagem antes de usar os preços. A série aplicada foi preservada.',
+            pasteApplied: (count) => `${count} preços da colagem aplicados. O cálculo usa esta série.`,
+            pasteCounts: (valid, count) => `${valid} preços válidos em ${count} linhas · ${Math.max(count - 1, 0)} retornos se a série for válida.`,
+            pasteErrors: (count) => `Corrija ${count} linha(s) da colagem.`,
+            pastePreview: (values) => `Preços na ordem recebida: ${values}.`,
             priceLabel: (row) => `Preço do ativo no período ${row}`,
             pageStatus: (start, end, total) => `${start}-${end} de ${total}`,
             pageEmpty: '0 de 0',
@@ -645,9 +853,30 @@
             recalculate: 'Recalcular',
             stale: 'Dados alterados. Recalcule para atualizar.',
             outputHint: 'Copiar e salvar ficam disponíveis após recalcular.',
-            meta: (prices, returns) => `N = ${prices} preços · n = ${returns} retornos · unidade: por período`,
-            sourceExample: 'Exemplo da ferramenta. Importe um arquivo ou use “Limpar dados” para inserir a sua própria série.',
+            meta: (prices, returns) => `N = ${prices} preços · n = N − 1 = ${returns} retornos · unidade: por período`,
+            statsNote: (divisor, annual) => 'Volatilidade = desvio-padrão amostral dos retornos: a soma dos quadrados dos '
+                + `desvios é dividida por n − 1 = N − 2 = ${divisor}. Valores por período`
+                + (annual ? '; a anualização aparece no bloco anual.' : ', sem anualização.'),
+            PERIODS_EMPTY: 'Informe os períodos por ano (m).',
+            PERIODS_NOT_INTEGER: 'Os períodos por ano (m) devem ser um número inteiro.',
+            PERIODS_RANGE: `Os períodos por ano (m) devem estar entre ${annualLimits.min} e ${annualLimits.max}.`,
+            ANNUAL_NOT_FINITE: 'A anualização destes retornos com este m não produz um número representável. Reduza m ou revise a série.',
+            periodsHint: `Sugestões: 252 (diária), 52 (semanal) e 12 (mensal). De ${annualLimits.min} a ${annualLimits.max}.`,
+            annualPending: 'Resultados anuais pendentes: corrija os períodos por ano (m) para atualizá-los. Os valores por período acima continuam válidos.',
+            annualBlocked: 'Corrija os períodos por ano (m) para copiar ou salvar com a anualização.',
+            annualMeta: (periods, frequency) => `m = ${periods} períodos por ano · frequência: ${frequency} · unidade: anual`,
+            frequencyDaily: 'diária',
+            frequencyWeekly: 'semanal',
+            frequencyMonthly: 'mensal',
+            frequencyCustom: 'personalizada',
+            annualRateLabel: 'Taxa anual equivalente',
+            annualVolatilityLabel: 'Volatilidade anual',
+            periodsPerYearLabel: 'Períodos por ano (m)',
+            sourceExample: 'Exemplo da ferramenta. Cole os preços, importe um arquivo ou use “Limpar dados” para inserir a sua própria série.',
             sourceExampleFile: 'Exemplo da ferramenta. Importe um arquivo para usar a sua própria série.',
+            sourceExamplePaste: 'Exemplo da ferramenta. Cole e aplique os preços para usar a sua própria série.',
+            sourcePaste: 'Série aplicada a partir da colagem.',
+            badgePaste: 'Colagem',
             sourceProject: (name) => (name ? `Projeto salvo: ${name}.` : 'Projeto salvo aberto para reexecução.'),
             sourceUser: 'Série informada por você.',
             sourceFile: (origin) => `Importado de ${origin}.`,
@@ -662,6 +891,7 @@
             undoRestore: 'restaurar dados salvos',
             undoResize: 'reduzir a tabela',
             undoImport: 'importar arquivo',
+            undoPaste: 'aplicar colagem',
             FILE_TOO_LARGE: (mb, limit) => `O arquivo tem ${mb} MB e o limite é ${limit} MB.`,
             FILE_EMPTY: 'O arquivo está vazio.',
             FILE_TYPE_REFUSED: (extension) => `Arquivos .${extension} não são lidos. Salve como .xlsx ou CSV e importe novamente.`,
@@ -730,6 +960,14 @@
             pendingAction: 'Match the table to the number of prices (N) to calculate.',
             importPending: 'Import a file with the prices to calculate.',
             importInvalid: 'The series in memory has prices to fix. Import the file again or use “Fill in manually”.',
+            pastePending: 'Paste the column, check the preview and select “Use prices” before calculating.',
+            pasteEmpty: 'Pasted text is a draft. The applied series only changes when you select “Use prices”.',
+            pasteDraft: 'Unapplied draft. Results still refer to the applied series; check the preview and select “Use prices”.',
+            pasteInvalid: 'Fix the pasted prices before applying them. The applied series has been preserved.',
+            pasteApplied: (count) => `${count} pasted prices applied. The calculation uses this series.`,
+            pasteCounts: (valid, count) => `${valid} valid prices in ${count} rows · ${Math.max(count - 1, 0)} returns if the series is valid.`,
+            pasteErrors: (count) => `Fix ${count} pasted row(s).`,
+            pastePreview: (values) => `Prices in the order received: ${values}.`,
             priceLabel: (row) => `Asset price in period ${row}`,
             pageStatus: (start, end, total) => `${start}-${end} of ${total}`,
             pageEmpty: '0 of 0',
@@ -737,9 +975,30 @@
             recalculate: 'Recalculate',
             stale: 'Data changed. Recalculate to update.',
             outputHint: 'Copy and save become available after recalculating.',
-            meta: (prices, returns) => `N = ${prices} prices · n = ${returns} returns · unit: per period`,
-            sourceExample: 'Tool example. Import a file or use “Clear data” to enter your own series.',
+            meta: (prices, returns) => `N = ${prices} prices · n = N − 1 = ${returns} returns · unit: per period`,
+            statsNote: (divisor, annual) => 'Volatility = sample standard deviation of the returns: the sum of the squared '
+                + `deviations is divided by n − 1 = N − 2 = ${divisor}. Values per period`
+                + (annual ? '; the annualization is in the annual block.' : ', with no annualization.'),
+            PERIODS_EMPTY: 'Enter the number of periods per year (m).',
+            PERIODS_NOT_INTEGER: 'The periods per year (m) must be a whole number.',
+            PERIODS_RANGE: `The periods per year (m) must be between ${annualLimits.min} and ${annualLimits.max}.`,
+            ANNUAL_NOT_FINITE: 'Annualizing these returns with this m does not give a number that can be represented. Lower m or review the series.',
+            periodsHint: `Suggestions: 252 (daily), 52 (weekly) and 12 (monthly). From ${annualLimits.min} to ${annualLimits.max}.`,
+            annualPending: 'Annual results pending: fix the periods per year (m) to update them. The per-period values above are still valid.',
+            annualBlocked: 'Fix the periods per year (m) to copy or save with the annualization.',
+            annualMeta: (periods, frequency) => `m = ${periods} periods per year · frequency: ${frequency} · unit: annual`,
+            frequencyDaily: 'daily',
+            frequencyWeekly: 'weekly',
+            frequencyMonthly: 'monthly',
+            frequencyCustom: 'custom',
+            annualRateLabel: 'Equivalent annual rate',
+            annualVolatilityLabel: 'Annual volatility',
+            periodsPerYearLabel: 'Periods per year (m)',
+            sourceExample: 'Tool example. Paste prices, import a file or use “Clear data” to enter your own series.',
             sourceExampleFile: 'Tool example. Import a file to use your own series.',
+            sourceExamplePaste: 'Tool example. Paste and apply prices to use your own series.',
+            sourcePaste: 'Series applied from pasted prices.',
+            badgePaste: 'Pasted prices',
             sourceProject: (name) => (name ? `Saved project: ${name}.` : 'Saved project opened to re-run.'),
             sourceUser: 'Series entered by you.',
             sourceFile: (origin) => `Imported from ${origin}.`,
@@ -754,6 +1013,7 @@
             undoRestore: 'restore saved data',
             undoResize: 'shrink the table',
             undoImport: 'import a file',
+            undoPaste: 'apply pasted prices',
             FILE_TOO_LARGE: (mb, limit) => `The file is ${mb} MB and the limit is ${limit} MB.`,
             FILE_EMPTY: 'The file is empty.',
             FILE_TYPE_REFUSED: (extension) => `.${extension} files are not read. Save as .xlsx or CSV and import again.`,
@@ -826,11 +1086,17 @@
     const undoBtn = el('undoButton');
     const staleBanner = el('staleBanner');
     const outputHint = el('outputHint');
+    const pasteInput = el('pastedPrices');
+    const usePasteBtn = el('usePastedPrices');
+    const annualizeToggle = el('annualizeToggle');
+    const frequencySelect = el('annualFrequency');
+    const periodsInput = el('periodsPerYear');
+    const periodsError = el('periodsError');
 
     // The series lives here, as typed, so paging or resizing never loses a value
     // and an unreadable entry stays on screen until the user corrects it.
     const state = {
-        mode: 'manual',         // 'manual': N and the table; 'file': the file decides
+        mode: 'manual',         // manual, file or paste; changing mode never applies data
         priceTexts: [],
         rowErrors: new Map(),   // row index -> error code, from the last attempt
         seriesErrors: [],
@@ -840,6 +1106,7 @@
         returnsPage: 1,
         pageSize: core.DEFAULT_PAGE_SIZE,
         source: openedFromProject ? 'project' : 'example',
+        entryMethod: openedFromProject ? 'project' : 'manual', // kept after individual edits
         sourceDetail: '',       // file, sheet and column a series was imported from
         lastRun: null,          // inputs and results of the last successful calculation
         stale: false,           // data changed after that calculation
@@ -847,6 +1114,19 @@
         chart: null,
         file: null,             // the file being checked, until "use these prices"
         fileToken: 0,           // a later file wins: an earlier read is discarded
+        paste: { text: '', check: null }, // independent draft, including invalid input
+        // The optional annualization. `periods` is the confirmed m; while it is null
+        // the annual block is pending and the per-period results stay valid.
+        annual: {
+            on: false,
+            frequency: DEFAULT_FREQUENCY,
+            periods: null,          // the confirmed m, or null while the field is invalid
+            code: null,             // why the annual block is pending, when it is
+            showError: false,       // the message of the m field, after a confirmation
+            // Last valid configuration of the analysis in progress, to come back to
+            // when the option is switched on again.
+            last: { frequency: DEFAULT_FREQUENCY, periodsText: String(core.PERIODS_PER_YEAR[DEFAULT_FREQUENCY]) },
+        },
     };
 
     const PRICE_PAGERS = ['pricesPager', 'pricesPagerBottom'];
@@ -854,7 +1134,13 @@
 
     const trimmed = (value) => (value === undefined || value === null ? '' : String(value)).trim();
     const show = (node, visible) => { node.hidden = !visible; };
-    const percent = (value) => `${(value * 100).toFixed(2)}%`;
+    // The screen, the chart, the copy and the saved report write a return the same
+    // way: four percentage decimals, with the separator of the session's language.
+    const decimal = lang === 'en' ? '.' : ',';
+    const percent = (value) => core.formatPercent(value, { separator: decimal });
+    // A price keeps every digit it was given, including the five decimals of the
+    // handbook example; only the decimal separator follows the language.
+    const priceText = (value) => core.formatNumber(value, { separator: decimal });
     const asTexts = (prices) => (Array.isArray(prices) ? prices : [])
         .map(price => (price === undefined || price === null ? '' : String(price)));
     const isManual = () => state.mode === 'manual';
@@ -864,9 +1150,10 @@
     function renderSource() {
         const kinds = {
             example: ['badgeExample', 'rv-badge',
-                      isManual() ? t.sourceExample : t.sourceExampleFile],
+                      isManual() ? t.sourceExample : (state.mode === 'paste' ? t.sourceExamplePaste : t.sourceExampleFile)],
             project: ['badgeProject', 'rv-badge rv-badge-project', t.sourceProject(savedProjectName)],
             file: ['badgeFile', 'rv-badge rv-badge-file', t.sourceFile(state.sourceDetail)],
+            paste: ['badgePaste', 'rv-badge rv-badge-user', t.sourcePaste],
             user: ['badgeUser', 'rv-badge rv-badge-user',
                    state.sourceDetail ? t.sourceFileEdited(state.sourceDetail) : t.sourceUser],
         };
@@ -906,11 +1193,15 @@
         // Saving sends the chart image with the numbers, so a chart that never
         // loaded is said to block it instead of leaving a button that does nothing.
         const chartMissing = hasRun && !state.chart;
-        outputHint.textContent = outdated ? t.outputHint : t.saveNeedsChart;
-        show(outputHint, outdated || chartMissing);
+        // Annualization asked for with a pending m: the copy and the project would
+        // claim an annualization that has no numbers.
+        const annualPending = state.annual.on && Boolean(state.annual.code);
+        outputHint.textContent = outdated ? t.outputHint
+            : (annualPending ? t.annualBlocked : t.saveNeedsChart);
+        show(outputHint, outdated || annualPending || chartMissing);
         // A result that no longer matches the data can be neither copied nor saved.
-        copyBtn.disabled = !hasRun || outdated;
-        saveBtn.disabled = !hasRun || outdated || chartMissing;
+        copyBtn.disabled = !hasRun || outdated || annualPending;
+        saveBtn.disabled = !hasRun || outdated || chartMissing || annualPending || saveBtn.dataset.saving === 'true';
         calculateBtn.textContent = hasRun ? t.recalculate : t.calculate;
         calculateBtn.classList.toggle('btn-warning', outdated);
         calculateBtn.classList.toggle('btn-primary', !outdated);
@@ -923,21 +1214,24 @@
     function renderCountState() {
         const parsed = countResult();
         const invalid = Boolean(parsed.code);
+        show(el('manualImportSuggestion'), isManual() && !invalid && parsed.value > 30
+            && state.entryMethod === 'manual');
         countInput.setAttribute('aria-invalid', invalid ? 'true' : 'false');
         countError.textContent = invalid ? message(parsed.code) : '';
         show(countError, invalid && state.showCountError);
 
         const pendingText = el('pendingText');
         if (!isManual()) {
-            // N and the series come from the file, so there is nothing to adjust:
-            // what Calculate waits for is an import, not a number.
+            // The applied series owns N here. A manual count draft stays intact.
             show(el('pendingBadge'), false);
             show(pendingText, false);
             const ready = state.source !== 'example'
-                && core.validateSeries(state.priceTexts, limits).valid;
+                && core.validateSeries(state.priceTexts, limits).valid
+                && (state.mode !== 'paste' || pasteMatchesSeries());
             calculateBtn.disabled = !ready;
             calculateHint.textContent =
-                state.source === 'example' ? t.importPending : t.importInvalid;
+                state.mode === 'paste' ? t.pastePending
+                    : (state.source === 'example' ? t.importPending : t.importInvalid);
             show(calculateHint, !ready);
             return;
         }
@@ -1121,8 +1415,100 @@
         el('meanContinuous').textContent = percent(r.mean_continuous);
         el('volatilityDiscrete').textContent = percent(r.volatility_discrete);
         el('volatilityContinuous').textContent = percent(r.volatility_continuous);
-        el('resultsMeta').textContent =
-            t.meta(state.lastRun.parameters.prices.length, r.discrete_returns.length);
+        const returns = r.discrete_returns.length;
+        el('resultsMeta').textContent = t.meta(state.lastRun.parameters.prices.length, returns);
+        // The divisor of the sample standard deviation, with this series' numbers:
+        // n − 1 = N − 2, which is what the student checks against the handbook.
+        el('statsNote').textContent = t.statsNote(returns - 1, state.annual.on);
+    }
+
+    // --- Optional annualization -------------------------------------------------
+    // m is a convention of the user, not a property of the series: switching the
+    // option on or editing m recomputes only this block, with no new calculation of
+    // the prices and no invalidation of the per-period results (plan §6).
+
+    const FREQUENCY_LABELS = {
+        daily: 'frequencyDaily', weekly: 'frequencyWeekly',
+        monthly: 'frequencyMonthly', custom: 'frequencyCustom',
+    };
+
+    const frequencyLabel = (frequency) => t[FREQUENCY_LABELS[frequency] || 'frequencyCustom'];
+
+    /** The annualization of a run with the confirmed m: `{value}`, `{code}` or null. */
+    function annualFor(run) {
+        if (!state.annual.on || !run || state.annual.periods === null) {
+            return null;
+        }
+        return core.annualize(run.results, state.annual.periods);
+    }
+
+    const annualValues = (run) => {
+        const annual = annualFor(run);
+        return annual && annual.value ? annual.value : null;
+    };
+
+    /**
+     * Reads the m in the field and updates only the annual block. `show` turns the
+     * message of the field on, which happens after a confirmation or an action, not
+     * while the user is still typing.
+     */
+    function confirmAnnual(options) {
+        const settings = options || {};
+        if (settings.show !== undefined) {
+            state.annual.showError = settings.show;
+        }
+        const parsed = core.parsePeriodsPerYear(periodsInput.value, annualLimits);
+        state.annual.periods = parsed.code ? null : parsed.value;
+        state.annual.code = parsed.code || null;
+        if (!state.annual.code) {
+            const annual = annualFor(state.lastRun);
+            if (annual && annual.code) {
+                // A whole, in-range m whose annualization still leaves the range a
+                // number can hold: said so, instead of an Infinity on screen.
+                state.annual.code = annual.code;
+            } else {
+                state.annual.last = {
+                    frequency: state.annual.frequency,
+                    periodsText: trimmed(periodsInput.value),
+                };
+            }
+        }
+        renderAnnual();
+        renderOutputState();
+    }
+
+    /**
+     * Annualization asked for and still pending: say where to act instead of
+     * copying or saving an analysis that claims an annualization it does not have.
+     */
+    function annualReady() {
+        if (!state.annual.on || annualValues(state.lastRun)) {
+            return true;
+        }
+        confirmAnnual({ show: true });
+        periodsInput.focus();
+        return false;
+    }
+
+    function renderAnnual() {
+        const on = state.annual.on;
+        annualizeToggle.checked = on;
+        show(el('annualFields'), on);
+        frequencySelect.value = state.annual.frequency;
+        const pending = on && Boolean(state.annual.code);
+        periodsError.textContent = state.annual.code ? message(state.annual.code) : '';
+        show(periodsError, pending && state.annual.showError);
+        periodsInput.setAttribute('aria-invalid', pending ? 'true' : 'false');
+        // Before the first calculation there is nothing annual to show yet.
+        show(el('annualBlock'), on && Boolean(state.lastRun));
+        el('annualPending').textContent = state.annual.code === 'ANNUAL_NOT_FINITE'
+            ? message(state.annual.code) : t.annualPending;
+        show(el('annualPending'), pending);
+        const values = annualValues(state.lastRun);
+        el('annualRate').textContent = values ? percent(values.annual_rate_equivalent) : '—';
+        el('annualVolatility').textContent = values ? percent(values.annual_volatility_continuous) : '—';
+        el('annualMeta').textContent = values
+            ? t.annualMeta(values.periods_per_year, frequencyLabel(state.annual.frequency)) : '';
     }
 
     function renderChart() {
@@ -1168,19 +1554,26 @@
                     tooltip: {
                         callbacks: {
                             title: (items) => t.chartPeriod(items[0].dataIndex + 1, items[0].dataIndex + 2),
-                            label: (item) => `${item.dataset.label}: ${item.parsed.y.toFixed(2)}%`,
+                            // Read from the series, not from the plotted point, so the
+                            // tip shows exactly the number the table and the copy show.
+                            label: (item) => `${item.dataset.label}: `
+                                + percent((item.datasetIndex === 0 ? discrete : continuous)[item.dataIndex]),
                         },
                     },
                 },
                 scales: {
                     x: { ticks: { autoSkip: true, maxTicksLimit: dense ? 12 : 25, maxRotation: 0 } },
-                    y: { ticks: { callback: value => value.toFixed(2) + '%' } },
+                    // The axis keeps two decimals to stay readable; the values the
+                    // student copies down are in the tips, the table and the summary.
+                    y: { ticks: { callback: value => core.formatPercent(value / 100,
+                        { decimals: 2, separator: decimal }) } },
                 },
             },
         });
     }
 
     function renderData() {
+        if (state.mode === 'paste') renderPaste();
         renderCheck();
         renderCountState();
         renderPricesTable();
@@ -1192,18 +1585,20 @@
     }
 
     // --- Choosing how the prices are entered -----------------------------------
-    // One way at a time: a file (N and the table come from it, so neither is shown)
-    // or typing (N and the table are the entry, so the import block steps aside).
-    // Switching keeps the series in memory: nothing typed or imported is lost.
+    // Only the selected editor is visible. Drafts and the applied series survive
+    // switching modes; none of the editors applies data as a side effect.
 
     function renderMode() {
         const manual = isManual();
         el('dataModeManual').checked = manual;
-        el('dataModeFile').checked = !manual;
+        el('dataModeFile').checked = state.mode === 'file';
+        el('dataModePaste').checked = state.mode === 'paste';
         screen.querySelectorAll('.rv-mode-option').forEach(option => {
             option.classList.toggle('rv-mode-active', option.querySelector('input').checked);
         });
-        show(el('importSection'), !manual);
+        show(el('importSection'), state.mode === 'file');
+        show(el('pasteSection'), state.mode === 'paste');
+        show(el('appliedSeriesLabel'), !manual);
         show(form, manual);
         show(el('manualTable'), manual);
         // Both act on the table, which is not on screen in file mode.
@@ -1217,12 +1612,17 @@
     }
 
     function setMode(mode) {
+        if (!['manual', 'file', 'paste'].includes(mode)) return;
         if (state.mode === mode) {
             return;
         }
         state.mode = mode;
         renderMode();
-        (isManual() ? countInput : fileInput).focus();
+        // Keep focus on the radio so arrow keys can visit all three choices.
+    }
+
+    function focusEditor() {
+        (isManual() ? countInput : (state.mode === 'paste' ? pasteInput : fileInput)).focus();
     }
 
     // --- Replacing the series, with one step of undo ---------------------------
@@ -1231,13 +1631,16 @@
         state.undo = {
             action: action,
             priceTexts: state.priceTexts.slice(),
+            countText: countInput.value,
             source: state.source,
+            entryMethod: state.entryMethod,
             sourceDetail: state.sourceDetail,
         };
     }
 
-    function applySeries(texts, source, detail) {
+    function applySeries(texts, source, detail, entryMethod) {
         state.priceTexts = texts.slice();
+        state.entryMethod = entryMethod || (['file', 'paste', 'project'].includes(source) ? source : 'manual');
         countInput.value = String(texts.length);
         state.rowErrors = new Map();
         state.seriesErrors = [];
@@ -1262,9 +1665,82 @@
             return;
         }
         state.undo = null;
-        // N follows the restored series, so undo never leaves the table pending.
-        applySeries(undo.priceTexts, undo.source, undo.sourceDetail);
-        countInput.focus();
+        // Restore even an unfinished manual count; changing mode must not erase it.
+        applySeries(undo.priceTexts, undo.source, undo.sourceDetail, undo.entryMethod);
+        countInput.value = undo.countText;
+        renderCountState();
+        focusEditor();
+    }
+
+    // --- Pasting one column ----------------------------------------------------
+
+    function pasteMatchesSeries() {
+        const check = state.paste.check;
+        return state.source === 'paste' && check && check.valid
+            && check.texts.length === state.priceTexts.length
+            && check.texts.every((value, index) => value === state.priceTexts[index]);
+    }
+
+    function renderPaste() {
+        const check = state.paste.check || core.readPastedColumn(state.paste.text, limits);
+        state.paste.check = check;
+        const empty = state.paste.text.trim() === '';
+        const applied = pasteMatchesSeries();
+        show(el('pastePreview'), !empty);
+        el('pastePreview').setAttribute('aria-busy', 'false');
+        el('pasteCounts').textContent = t.pasteCounts(check.count - check.rowErrors.length, check.count);
+        const sample = check.texts.length > 6
+            ? [...check.texts.slice(0, 3), '…', ...check.texts.slice(-3)] : check.texts;
+        el('pasteSample').textContent = t.pastePreview(sample.map(value => value || '—').join(' · '));
+        pasteInput.setAttribute('aria-invalid', !empty && !check.valid ? 'true' : 'false');
+        const status = empty ? t.pasteEmpty : (applied ? t.pasteApplied(check.count)
+            : (check.valid ? t.pasteDraft : t.pasteInvalid));
+        if (el('pasteStatus').textContent !== status) el('pasteStatus').textContent = status;
+        show(el('pasteErrors'), !empty && !check.valid);
+        el('pasteErrorsTitle').textContent = check.seriesErrors.length
+            ? message(check.seriesErrors[0].code) : t.pasteErrors(check.rowErrors.length);
+        const list = el('pasteErrorsList');
+        list.innerHTML = '';
+        // An oversized block is refused in full; no large error list is rendered.
+        const errors = check.count > MAX_PRICES ? check.rowErrors.slice(0, MAX_LISTED_ERRORS) : check.rowErrors;
+        errors.forEach(error => {
+            const item = document.createElement('li');
+            item.textContent = t.errorRow(check.entries[error.index].line, message(error.code));
+            list.appendChild(item);
+        });
+        if (errors.length < check.rowErrors.length) {
+            const item = document.createElement('li');
+            item.textContent = t.errorMore(check.rowErrors.length - errors.length);
+            list.appendChild(item);
+        }
+        el('pasteFirstError').textContent = t.goToFirstError;
+        show(el('pasteFirstError'), check.rowErrors.length > 0);
+        usePasteBtn.disabled = !check.valid || applied;
+    }
+
+    function focusPasteError() {
+        const check = state.paste.check;
+        const error = check && check.rowErrors[0];
+        pasteInput.focus();
+        if (error) {
+            const entry = check.entries[error.index];
+            pasteInput.setSelectionRange(entry.start, entry.end);
+        }
+    }
+
+    function usePastedPrices() {
+        // Recheck at the action boundary, including clicks before the debounce.
+        state.paste.text = pasteInput.value;
+        state.paste.check = null;
+        renderPaste();
+        if (!state.paste.check.valid) {
+            focusPasteError();
+            return;
+        }
+        if (pasteMatchesSeries()) return;
+        snapshot(t.undoPaste);
+        applySeries(state.paste.check.texts, 'paste');
+        calculateBtn.focus();
     }
 
     // --- Actions ---------------------------------------------------------------
@@ -1306,9 +1782,15 @@
     }
 
     function calculate() {
+        if (state.mode === 'paste' && !pasteMatchesSeries()) {
+            renderPaste();
+            renderCountState();
+            focusPasteError();
+            return;
+        }
         state.showCountError = true;
         state.showErrors = true;
-        const count = countResult();
+        const count = isManual() ? countResult() : { value: state.priceTexts.length };
         if (count.code) {
             renderData();
             if (isManual()) {
@@ -1343,6 +1825,8 @@
         renderData();
         renderOutputState();
         renderSummary();
+        // Only the annual block is recomputed: the series was not touched by m.
+        confirmAnnual({ show: true });
         renderReturnsTable();
         renderChart();
         // The chart exists only now, and saving depends on it.
@@ -1466,7 +1950,10 @@
         if (!file) {
             return;
         }
+        // Even a refused replacement invalidates a read already in flight.
+        const token = ++state.fileToken;
         show(importError, false);
+        setImportStatus('');
         closePreview({ keepInput: true });
         const inspection = fileApi.inspectFile(file);
         if (inspection.code === 'FILE_TOO_LARGE') {
@@ -1480,7 +1967,6 @@
             return;
         }
 
-        const token = ++state.fileToken;
         setImportStatus(t.reading(file.name));
         let result;
         try {
@@ -1690,7 +2176,8 @@
         let counts = t.previewCounts(valid, selection.entries.length);
         if (selection.checked.valid && selection.checked.prices.length) {
             const prices = selection.checked.prices;
-            counts += t.previewFirstLast(prices[0], prices[prices.length - 1]);
+            // Read from the file, written in the language of the screen.
+            counts += t.previewFirstLast(priceText(prices[0]), priceText(prices[prices.length - 1]));
         }
         if (file.to < lastLine && selection.entries.length >= MAX_PRICES) {
             counts += t.previewCapped(MAX_PRICES);
@@ -1827,11 +2314,8 @@
     // --- Copy to Excel ----------------------------------------------------------
     // Tab-separated text, one line per row: Excel puts each value in its own cell.
     // Numbers use the decimal separator of the screen's language, so Excel in that
-    // language reads them as numbers (and "5,1234%" as a percentage), with 4 decimals
-    // instead of the 2 shown on screen.
-    const decimal = lang === 'en' ? '.' : ',';
-    const excelNumber = (value, decimals) => value.toFixed(decimals).replace('.', decimal);
-    const excelPercent = (value) => `${excelNumber(value * 100, 4)}%`;
+    // language reads them as numbers (and "5,1234%" as a percentage). The strings
+    // are the ones on screen, so the spreadsheet and the screen can be compared.
 
     function tableAsTsv(run) {
         const { prices } = run.parameters;
@@ -1841,14 +2325,22 @@
             // The return in row t goes from period t-1 to t; the first period has none.
             lines.push([
                 i + 1,
-                String(price).replace('.', decimal),  // as typed, no rounding
-                i === 0 ? '' : excelPercent(r.discrete_returns[i - 1]),
-                i === 0 ? '' : excelPercent(r.continuous_returns[i - 1]),
+                priceText(price),   // as typed, with no display rounding
+                i === 0 ? '' : percent(r.discrete_returns[i - 1]),
+                i === 0 ? '' : percent(r.continuous_returns[i - 1]),
             ]);
         });
         lines.push([]);
-        lines.push([t.meanReturn, '', excelPercent(r.mean_discrete), excelPercent(r.mean_continuous)]);
-        lines.push([t.volatility, '', excelPercent(r.volatility_discrete), excelPercent(r.volatility_continuous)]);
+        lines.push([t.meanReturn, '', percent(r.mean_discrete), percent(r.mean_continuous)]);
+        lines.push([t.volatility, '', percent(r.volatility_discrete), percent(r.volatility_continuous)]);
+        // Both annual figures come from the log returns, so they go in that column.
+        const annual = annualValues(run);
+        if (annual) {
+            lines.push([]);
+            lines.push([t.periodsPerYearLabel, '', '', String(annual.periods_per_year)]);
+            lines.push([t.annualRateLabel, '', '', percent(annual.annual_rate_equivalent)]);
+            lines.push([t.annualVolatilityLabel, '', '', percent(annual.annual_volatility_continuous)]);
+        }
         return lines.map(cells => cells.join('\t')).join('\r\n');
     }
 
@@ -1872,10 +2364,64 @@
 
     // --- Events ----------------------------------------------------------------
 
+    let pasteTimer = null;
+    pasteInput.addEventListener('input', () => {
+        state.paste.text = pasteInput.value;
+        state.paste.check = null;
+        usePasteBtn.disabled = true;
+        el('pastePreview').setAttribute('aria-busy', 'true');
+        // Only the draft changed: the applied series and its results are intact.
+        renderCountState();
+        clearTimeout(pasteTimer);
+        pasteTimer = setTimeout(() => {
+            renderPaste();
+            renderCountState();
+        }, 200);
+    });
+    usePasteBtn.addEventListener('click', usePastedPrices);
+    el('pasteFirstError').addEventListener('click', focusPasteError);
+    el('suggestImportButton').addEventListener('click', () => {
+        setMode('file');
+        focusEditor();
+    });
+
+    annualizeToggle.addEventListener('change', () => {
+        state.annual.on = annualizeToggle.checked;
+        if (state.annual.on) {
+            // Back to the last valid configuration of the analysis in progress.
+            state.annual.frequency = state.annual.last.frequency;
+            periodsInput.value = state.annual.last.periodsText;
+        }
+        // Switching the option on is not a wrong value yet: no message until the
+        // field is confirmed or an action needs it.
+        confirmAnnual({ show: false });
+        renderSummary();
+    });
+
+    frequencySelect.addEventListener('change', () => {
+        state.annual.frequency = frequencySelect.value;
+        // 252, 52 and 12 are suggestions, written into the field so they can be edited.
+        const suggestion = core.suggestedPeriods(state.annual.frequency);
+        if (suggestion !== null) {
+            periodsInput.value = String(suggestion);
+        }
+        confirmAnnual({ show: false });
+        if (suggestion === null) {
+            periodsInput.focus();   // a custom frequency is the user's own m
+            periodsInput.select();
+        }
+    });
+
+    // Editing m updates the annual results only, as soon as the field holds a whole
+    // number in range; the per-period results and the series stay as they are.
+    periodsInput.addEventListener('input', () => confirmAnnual({ show: false }));
+    periodsInput.addEventListener('change', () => confirmAnnual({ show: true }));
+    periodsInput.addEventListener('blur', () => confirmAnnual({ show: true }));
+
     screen.querySelectorAll('input[name="dataMode"]').forEach(radio => {
         radio.addEventListener('change', () => {
             if (radio.checked) {
-                setMode(radio.value === 'file' ? 'file' : 'manual');
+                setMode(radio.value);
             }
         });
     });
@@ -2088,7 +2634,7 @@
     const copyLabelHtml = copyBtn.innerHTML;
     let copyResetTimer = null;
     copyBtn.addEventListener('click', () => {
-        if (!state.lastRun || state.stale) {
+        if (!state.lastRun || state.stale || !annualReady()) {
             return;
         }
         show(copyError, false);
@@ -2105,17 +2651,32 @@
     });
 
     saveBtn.addEventListener('click', () => {
-        if (!state.lastRun || state.stale || !state.chart) {
+        if (!state.lastRun || state.stale || !state.chart || !annualReady()) {
             return;
         }
         const run = state.lastRun;
+        // m and the frequency are saved only when the run was annualized, so a
+        // project saved without them never re-opens as an annualized one.
+        const annual = annualValues(run);
+        const annualSignature = JSON.stringify([state.annual.on, state.annual.frequency, periodsInput.value]);
+        const parameters = annual
+            ? { ...run.parameters, frequency: state.annual.frequency,
+                periodsPerYear: annual.periods_per_year }
+            : run.parameters;
+        const results = { ...run.results, chart: state.chart.toBase64Image() };
+        if (annual) {
+            results.annual_rate_equivalent = annual.annual_rate_equivalent;
+            results.annual_volatility_continuous = annual.annual_volatility_continuous;
+        }
         Promise.resolve(saetoSaveProject({
             button: saveBtn,
             url: '{% url "save_financial_model" %}',
             modelType: 'RETURN_VOLATILITY',
-            parameters: run.parameters,
-            results: { ...run.results, chart: state.chart.toBase64Image() },
+            parameters: parameters,
+            results: results,
             lang: lang,
+            isCurrent: () => screen.isConnected !== false && state.lastRun === run && !state.stale && annualReady()
+                && annualSignature === JSON.stringify([state.annual.on, state.annual.frequency, periodsInput.value]),
         })).finally(() => {
             // The analysis may have changed while the request was in flight.
             renderOutputState();
@@ -2124,6 +2685,7 @@
 
     function start() {
         el('priceCountHint').textContent = t.countHint;
+        el('periodsHint').textContent = t.periodsHint;
         const megabyte = 1024 * 1024;
         screen.querySelectorAll('[data-limit-mb]').forEach(node => {
             node.textContent = String(Math.round(fileApi.MAX_FILE_BYTES / megabyte));
@@ -2133,12 +2695,128 @@
         const rows = count.code ? MIN_PRICES : count.value;
         state.priceTexts = prices.length ? prices : new Array(rows).fill('');
         countInput.value = String(state.priceTexts.length);
-        state.mode = el('dataModeFile').checked ? 'file' : 'manual';
+        state.mode = el('dataModePaste').checked ? 'paste' : (el('dataModeFile').checked ? 'file' : 'manual');
+        state.paste.text = pasteInput.value;
+        // A saved project opens with the annualization it was saved with; one saved
+        // before this option existed, and the example, open without it.
+        const savedPeriods = core.parsePeriodsPerYear(initialData.periodsPerYear, annualLimits);
+        if (!savedPeriods.code) {
+            state.annual.on = true;
+            state.annual.frequency = core.FREQUENCIES.includes(initialData.frequency)
+                ? initialData.frequency : 'custom';
+            periodsInput.value = String(savedPeriods.value);
+        } else {
+            periodsInput.value = state.annual.last.periodsText;
+        }
         renderOutputState();
         renderMode();   // renders the source and the data in the chosen mode
+        confirmAnnual({ show: false });
         renderReturnsTable();
     }
 
     start();
+
+    // Keep raw edits, including invalid text, separate from the last calculation.
+    // No file binary, chart image or computed arrays belong in session storage.
+    if (window.saetoLifecycle) {
+        const lifecycle = window.saetoLifecycle;
+        const notice = document.createElement('p');
+        notice.className = 'alert alert-info';
+        notice.setAttribute('role', 'status');
+        notice.hidden = true;
+        const discard = document.createElement('button');
+        discard.type = 'button';
+        discard.className = 'btn btn-link';
+        discard.textContent = lang === 'en' ? 'Discard draft' : 'Descartar rascunho';
+        discard.hidden = true;
+        screen.prepend(notice, discard);
+        const announce = text => { notice.textContent = text; notice.hidden = false; };
+        const textsValid = values => Array.isArray(values) && values.length >= MIN_PRICES
+            && values.length <= MAX_PRICES && values.every(value => typeof value === 'string');
+        lifecycle.attachDraft({
+            capture: () => ({
+                priceTexts: state.priceTexts, countText: countInput.value, mode: state.mode,
+                paste: pasteInput.value, source: state.source, entryMethod: state.entryMethod,
+                sourceDetail: state.sourceDetail, page: state.page, returnsPage: state.returnsPage,
+                pageSize: state.pageSize, undo: state.undo, showErrors: state.showErrors,
+                annual: { on: state.annual.on, frequency: state.annual.frequency,
+                    periodsText: periodsInput.value, last: state.annual.last },
+                lastPrices: state.lastRun?.parameters.prices || null, stale: state.stale,
+                pendingFile: Boolean(state.file || fileInput.files?.length),
+                projectName: saveBtn.dataset.projectName || '',
+            }),
+            restore: data => {
+                if (!data || !textsValid(data.priceTexts) || !['manual', 'paste', 'file'].includes(data.mode)
+                    || typeof data.paste !== 'string' || typeof data.countText !== 'string') return false;
+                state.priceTexts = data.priceTexts;
+                countInput.value = data.countText;
+                state.mode = data.mode;
+                state.paste.text = pasteInput.value = data.paste;
+                state.source = ['example', 'project', 'file', 'paste', 'user'].includes(data.source) ? data.source : 'user';
+                state.entryMethod = data.entryMethod;
+                state.sourceDetail = typeof data.sourceDetail === 'string' ? data.sourceDetail : '';
+                state.pageSize = [25, 50, 100].includes(data.pageSize) ? data.pageSize : 25;
+                state.page = core.clampPage(Number(data.page) || 1, state.priceTexts.length, state.pageSize);
+                screen.querySelectorAll('[data-page-size]').forEach(select => { select.value = String(state.pageSize); });
+                if (data.undo && textsValid(data.undo.priceTexts)) state.undo = data.undo;
+                if (data.annual && core.FREQUENCIES.includes(data.annual.frequency)) {
+                    state.annual.on = data.annual.on === true;
+                    state.annual.frequency = data.annual.frequency;
+                    periodsInput.value = String(data.annual.periodsText ?? '');
+                    if (data.annual.last && core.FREQUENCIES.includes(data.annual.last.frequency)
+                        && !core.parsePeriodsPerYear(data.annual.last.periodsText, annualLimits).code) {
+                        state.annual.last = data.annual.last;
+                    }
+                }
+                if (Array.isArray(data.lastPrices) && core.validateSeries(data.lastPrices, limits).valid) {
+                    state.lastRun = { parameters: { periods: data.lastPrices.length, prices: data.lastPrices },
+                        results: core.computeReturns(data.lastPrices) };
+                    state.stale = Boolean(data.stale) || data.lastPrices.length !== state.priceTexts.length
+                        || state.priceTexts.some((text, index) => core.parsePrice(text).value !== data.lastPrices[index]);
+                    state.returnsPage = core.clampPage(Number(data.returnsPage) || 1, data.lastPrices.length - 1, state.pageSize);
+                    renderSummary();
+                    renderChart();
+                }
+                state.showErrors = Boolean(data.showErrors);
+                if (state.showErrors) {
+                    const check = core.validateSeries(state.priceTexts, limits);
+                    state.rowErrors = new Map(check.rowErrors.map(error => [error.index, error.code]));
+                    state.seriesErrors = check.seriesErrors;
+                }
+                saveBtn.dataset.projectName = typeof data.projectName === 'string' ? data.projectName : '';
+                renderMode();
+                confirmAnnual({ show: false });
+                renderReturnsTable();
+                renderOutputState();
+                announce(lang === 'en' ? 'Draft recovered in this tab. It is not a saved project.'
+                    : 'Rascunho recuperado nesta aba. Ele não é um projeto salvo.');
+                if (data.pendingFile) setImportStatus(lang === 'en'
+                    ? 'Select the file again to review its preview. The applied prices were recovered.'
+                    : 'Selecione o arquivo novamente para revisar a prévia. Os preços aplicados foram recuperados.');
+                discard.hidden = false;
+                return true;
+            },
+            warn: announce,
+        });
+        let draftTimer;
+        ['input', 'change', 'click'].forEach(name => screen.addEventListener(name, () => {
+            lifecycle.changed();
+            discard.hidden = false;
+            clearTimeout(draftTimer);
+            draftTimer = setTimeout(() => lifecycle.flush(), 250);
+        }));
+        discard.addEventListener('click', event => {
+            event.stopPropagation();
+            lifecycle.discard();
+            window.location.reload();
+        });
+        lifecycle.register(() => {
+            state.fileToken++;
+            clearTimeout(pasteTimer);
+            clearTimeout(copyResetTimer);
+            clearTimeout(draftTimer);
+            if (state.chart) { state.chart.destroy(); state.chart = null; }
+        });
+    }
 })();
 </script>

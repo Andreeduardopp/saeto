@@ -91,13 +91,13 @@ class CalculationEndpointTests(CalculationTestCase):
 
     def test_invalid_inputs_return_400_in_the_session_language(self):
         cases = [
-            ('abm_simulator', Choices.ARITHMETIC_BROWNIAN_MOTION, {'n_simulations': '5000'}, 'entre 2 e 1000', 'between 2 and 1000'),
+            ('abm_simulator', Choices.ARITHMETIC_BROWNIAN_MOTION, {'n_simulations': '5000'}, 'entre 2 e 1.000', 'between 2 and 1,000'),
             ('abm_simulator', Choices.ARITHMETIC_BROWNIAN_MOTION, {'sigma': 'abc'}, 'informe um número', 'enter a number'),
             ('abm_simulator', Choices.ARITHMETIC_BROWNIAN_MOTION, {'dt': '0.00001'}, 'o máximo é 10000', 'the maximum is 10000'),
             ('mbg_simulator', Choices.GBM_ITO, {'seed': '-1'}, 'Semente deve estar entre', 'Seed must be between'),
             ('simulate_mean_reversion', Choices.MEAN_REVERSION, {'kappa': '200'}, 'κ·dt deve ser menor que 1', 'κ·dt must be less than 1'),
             ('monte_carlos_simulator', Choices.GBM_MONTE_CARLO, {'time_unit': 'Século'}, 'opção inválida', 'invalid option'),
-            ('simulate_random_walk', Choices.RANDOM_WALK, {'steps': '0'}, 'entre 1 e 10000', 'between 1 and 10000'),
+            ('simulate_random_walk', Choices.RANDOM_WALK, {'steps': '0'}, 'entre 1 e 10.000', 'between 1 and 10,000'),
             ('simulate_random_walk_normal', Choices.RANDOM_WALK_NORMAL, {'paths': '2.5'}, 'número inteiro', 'whole number'),
             ('comparacao_modelos_view', Choices.MODELS_COMPARISON, {'dt': '5'}, 'não pode ser maior', 'cannot be greater'),
         ]
@@ -136,8 +136,8 @@ class CalculationEndpointTests(CalculationTestCase):
             ({'states': 'A, B'}, 'Informe 3 nomes de estados'),
             ({'states': 'A, A, B'}, 'devem ser diferentes'),
             ({'initial_percentages[1]': '20'}, 'somam 120%'),
-            ({'iterations': '100001'}, 'entre 1 e 100000'),
-            ({'iterations': '0'}, 'entre 1 e 100000'),
+            ({'iterations': '100001'}, 'entre 1 e 100.000'),
+            ({'iterations': '0'}, 'entre 1 e 100.000'),
             ({'iterations': '50.5'}, 'número inteiro'),
         ]
         for overrides, message in cases:

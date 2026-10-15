@@ -1,14 +1,28 @@
 <!-- app_teoria/templates/home.html -->
-{% load static %}
+{% load static navigation %}
 <!DOCTYPE html>
 <html lang="{% if request.session.language == 'en' %}en{% else %}pt-BR{% endif %}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
+    <title>{{ page_title }} · SAETO</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    {{ navigation|json_script:"saetoNavigation" }}
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{% static 'app_teoria/home/save_project.js' %}"></script>
+    <script src="{% static 'app_teoria/home/seeded_random.js' %}"></script>
+    <script src="{% static 'app_teoria/home/server_screen.js' %}"></script>
+    <script src="{% static 'app_teoria/volatility/return_volatility_core.js' %}"></script>
+    <script src="{% static 'app_teoria/volatility/price_file_reader.js' %}"></script>
+    <script src="{% static 'app_teoria/home/page_lifecycle.js' %}"></script>
     <style>
+        [hidden] { display: none !important; }
+        .content img { max-width: 100%; }
+        .sidebar a[aria-current="page"] { background: #495057; border-left: 4px solid #8cc8ff; }
+        :focus-visible { outline: 3px solid #086dd7; outline-offset: 3px; }
         body {
             font-family: Arial, sans-serif;
         }
@@ -76,18 +90,20 @@
             transform: rotate(90deg);
         }
         .accordion-checkbox {
-            display: none;
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
         }
+        .accordion-checkbox:focus-visible + .accordion-label { outline: 3px solid #8cc8ff; outline-offset: -3px; }
 
         .accordion-content {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
+            display: none;
             background-color: #495057;
         }
 
         .accordion-checkbox:checked + .accordion-label + .accordion-content {
-            max-height: 400px; 
+            display: block;
         }
         .accordion-content a {
             padding: 10px 20px;
@@ -177,18 +193,14 @@
     <!-- Sidebar -->
     {% include 'site/home/sidebar.html' %}
     <div class="content">
-        <div id="main-content">
-            <div class="container d-flex flex-column vh-100 justify-content-center align-items-center">
-                {% if request.session.language == 'en' %}
-                <img style="height:300px;width:600px;" src="{% static 'app_teoria/assets/logoEng2.png' %}" alt="Softfocus Assist">
-                {% else %}
-                <img style="height:300px;width:600px;" src="{% static 'app_teoria/assets/logo.png' %}" alt="Softfocus Assist">
-                {% endif %}
-            </div>
+        <div id="navigationStatus" role="status" aria-live="polite" hidden></div>
+        <button id="navigationRetry" class="btn btn-outline-primary mb-3" type="button" hidden>{% if request.session.language == "en" %}Try again{% else %}Tentar novamente{% endif %}</button>
+        <div id="main-content" tabindex="-1">
+            {{ initial_content|safe }}
         </div>
         <footer class="footnote-section">
             <p>
-                <a href="{% url 'references' %}" class="nav-link" data-url="{% url 'references' %}">
+                <a class="nav-link" data-url="{% url 'references' %}" href="{% page_url 'references' %}">
                     {% if request.session.language == 'en' %}References and further reading{% else %}Referências e leituras adicionais{% endif %}
                 </a>
             </p>
@@ -212,43 +224,24 @@
             </div>
         </footer>
     </div>
-    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="{% static 'app_teoria/home/save_project.js' %}"></script>
-    <script src="{% static 'app_teoria/home/seeded_random.js' %}"></script>
-    <script src="{% static 'app_teoria/home/server_screen.js' %}"></script>
-    <script src="{% static 'app_teoria/volatility/return_volatility_core.js' %}"></script>
-    <script src="{% static 'app_teoria/volatility/price_file_reader.js' %}"></script>
     <script>
-        function updateLanguage(language) {
-            $.ajax({
-                url: "{% url 'set_language' %}", 
-                type: "POST",
-                data: {
-                    language: language,
-                    csrfmiddlewaretoken: '{{ csrf_token }}'
-                },
-                success: function () {
-                    location.reload(); 
-                },
-                error: function () {
-                    alert('Failed to change language.');
-                }
-            });
-        }
-
         // The collapsed menu of small screens: a button, a backdrop and Escape all
         // close it, and the focus goes back to where it came from.
         (function () {
             const toggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('siteSidebar');
             const backdrop = document.getElementById('menuBackdrop');
+            const smallScreen = window.matchMedia('(max-width: 991.98px)');
+            const main = document.querySelector('.content');
 
             function setMenu(open) {
                 document.body.classList.toggle('menu-open', open);
                 toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                sidebar.inert = smallScreen.matches && !open;
+                main.inert = smallScreen.matches && open;
             }
+            setMenu(false);
+            smallScreen.addEventListener('change', () => setMenu(false));
 
             window.saetoCloseMenu = function () {
                 if (document.body.classList.contains('menu-open')) {
@@ -278,25 +271,7 @@
             });
         })();
 
-        $(document).ready(function(){
-            $('#main-content, .sidebar').on('click', '.nav-link, .rerun-btn', function(event){
-                event.preventDefault(); // Prevent default link behavior
-                const url = $(this).data('url'); // Get the URL from the data-url attribute
-
-                if (url) { // Ensure there is a URL to fetch
-                    window.saetoCloseMenu();  // a tool chosen on a phone gets the whole width
-                    $.ajax({
-                        url: url,
-                        success: function(data) {
-                            $('#main-content').html(data);
-                        },
-                        error: function() {
-                            $('#main-content').html('<p>Erro ao carregar conteúdo. Tente novamente.</p>');
-                        }
-                    });
-                }
-            });
-        });
     </script>
+    <script src="{% static 'app_teoria/home/navigation.js' %}"></script>
 </body>
 </html>

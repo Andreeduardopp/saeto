@@ -1,5 +1,6 @@
+{% load navigation %}
 <nav class="sidebar" id="siteSidebar" aria-label="{% if request.session.language == 'en' %}Main menu{% else %}Menu principal{% endif %}">
-    <a class="text-center" style="font-size:24px;" href="/home">Menu</a>
+    <a class="text-center" style="font-size:24px;" href="{% url 'home' %}">Menu</a>
     <div class="accordion-section">
         <input type="checkbox" id="accordion-1" class="accordion-checkbox">
         <label class="accordion-label d-flex justify-content-between" for="accordion-1">
@@ -13,19 +14,19 @@
             </div>
         </label>
         <div class="accordion-content">
-            <a class="nav-link" data-url="{% url 'cadeia_markov' %}">
+            <a class="nav-link" data-url="{% url 'cadeia_markov' %}" href="{% page_url 'cadeia_markov' %}">
                 {% if request.session.language == 'en' %}Markov Chains{% else %}Cadeias de Markov{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'random_walk_overview' %}">
+            <a class="nav-link" data-url="{% url 'random_walk_overview' %}" href="{% page_url 'random_walk_overview' %}">
                 Random Walk
             </a>
-            <a class="nav-link" data-url="{% url 'mbg_overview' %}">
+            <a class="nav-link" data-url="{% url 'mbg_overview' %}" href="{% page_url 'mbg_overview' %}">
                 {% if request.session.language == 'en' %}Brownian movement{% else %}Movimento Browniano{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'modelo_reversao_media' %}">
+            <a class="nav-link" data-url="{% url 'modelo_reversao_media' %}" href="{% page_url 'modelo_reversao_media' %}">
                 {% if request.session.language == 'en' %}Mean Reversion Model{% else %}Modelo de Reversão a Média{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'vizualizacao_modelos' %}">
+            <a class="nav-link" data-url="{% url 'vizualizacao_modelos' %}" href="{% page_url 'vizualizacao_modelos' %}">
                 {% if request.session.language == 'en' %}Model visualization{% else %}Visualização dos modelos{% endif %}
             </a>
         </div>
@@ -43,22 +44,22 @@
             </div>
         </label>
         <div class="accordion-content">
-            <a class="nav-link" data-url="{% url 'basic_concepts_overview' %}">
+            <a class="nav-link" data-url="{% url 'basic_concepts_overview' %}" href="{% page_url 'basic_concepts_overview' %}">
                 {% if request.session.language == 'en' %}Basic Concepts{% else %}Conceitos Básicos{% endif %}
             </a>   
-            <a class="nav-link" data-url="{% url 'volatilidade_template' %}">
+            <a class="nav-link" data-url="{% url 'volatilidade_template' %}" href="{% page_url 'volatilidade_template' %}">
                 {% if request.session.language == 'en' %}Return and volatility: <span class="fs-6">discrete and continuous</span>{% else %}Retorno e volatilidade: <span class="fs-6">discreto e contínuo</span> {% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'black_scholes_overview' %}">
+            <a class="nav-link" data-url="{% url 'black_scholes_overview' %}" href="{% page_url 'black_scholes_overview' %}">
                 {% if request.session.language == 'en' %}Black Scholes Merton Models{% else %}Modelos Black Scholes Merton{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'cox_ross_overview' %}">
+            <a class="nav-link" data-url="{% url 'cox_ross_overview' %}" href="{% page_url 'cox_ross_overview' %}">
                 {% if request.session.language == 'en' %}Cox-Ross-Rubinstein Models{% else %}Modelos Cox-Ross-Rubinstein{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'monte_carlo_overview' %}">
+            <a class="nav-link" data-url="{% url 'monte_carlo_overview' %}" href="{% page_url 'monte_carlo_overview' %}">
                 {% if request.session.language == 'en' %}Monte Carlo Methods{% else %}Métodos de Monte Carlo{% endif %}
             </a>
-            <a class="nav-link" data-url="{% url 'finite_difference_overview' %}">
+            <a class="nav-link" data-url="{% url 'finite_difference_overview' %}" href="{% page_url 'finite_difference_overview' %}">
                 {% if request.session.language == 'en' %}Finite Difference Methods{% else %}Métodos de Diferenças Finitas{% endif %}
             </a>
         </div>
@@ -76,17 +77,17 @@
             </div>
         </label>
         <div class="accordion-content">
-            <a class="nav-link" data-url="{% url 'binomial_model' %}">
+            <a class="nav-link" data-url="{% url 'binomial_model' %}" href="{% page_url 'binomial_model' %}">
                 {% if request.session.language == 'en' %}Binomial model{% else %}Modelo binomial{% endif %}
             </a>
 
             <!-- Copeland & Antikarov Method -->
-            <a class="nav-link" data-url="{% url 'copeland_antikarov_volatility' %}">
+            <a class="nav-link" data-url="{% url 'copeland_antikarov_volatility' %}" href="{% page_url 'copeland_antikarov_volatility' %}">
                 {% if request.session.language == 'en' %}Copeland & Antikarov Method{% else %}Método de Copeland & Antikarov{% endif %}
             </a>
             
             <!-- Herath & Park Method -->
-            <a class="nav-link" data-url="{% url 'herath_park_volatility' %}">
+            <a class="nav-link" data-url="{% url 'herath_park_volatility' %}" href="{% page_url 'herath_park_volatility' %}">
                 {% if request.session.language == 'en' %}Herath & Park Method{% else %}Método de Herath & Park{% endif %}
             </a>
         </div>
@@ -104,14 +105,13 @@
             </div>
         </label>
         <div class="accordion-content">
-            <a class="nav-link" data-url="{% url 'dilema_do_prisioneiro' %}">
+            <a class="nav-link" data-url="{% url 'dilema_do_prisioneiro' %}" href="{% page_url 'dilema_do_prisioneiro' %}">
                 {% if request.session.language == 'en' %}Prisoner's Dilemma{% else %}Dilema do Prisioneiro{% endif %}
             </a>
         </div>
     </div>
     <div class="accordion-section">
-        <input type="checkbox" id="accordion-5" class="accordion-checkbox">
-        <label data-url="{% url 'to_do' %}" class="nav-link accordion-label d-flex justify-content-between" for="accordion-5">
+        <a href="{% page_url 'to_do' %}" data-url="{% url 'to_do' %}" class="nav-link accordion-label d-flex justify-content-between">
             <div>
                 {% if request.session.language == 'en' %}Aplications{% else %}Aplicações{% endif %}
             </div>
@@ -120,26 +120,27 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
             </div>
-        </label>
+        </a>
         {% comment %} <div class="accordion-content">
-            <a href="{% url 'binomial_model' %}" class="nav-link" data-url="{% url 'binomial_model' %}">
+            <a class="nav-link" data-url="{% url 'binomial_model' %}" href="{% page_url 'binomial_model' %}">
                 {% if request.session.language == 'en' %}Binomial model{% else %}Modelo binomial{% endif %}
             </a>
         </div> {% endcomment %}
     </div>
     <div class="mt-auto px-2">
-        <a class="nav-link cursor-pointer accordion-section" data-url="{% url 'perfil_view' %}">
+        <a class="nav-link cursor-pointer accordion-section" data-url="{% url 'perfil_view' %}" href="{% page_url 'perfil_view' %}">
             {% if request.session.language == 'en' %}Perfil{% else %}Perfil{% endif %}
         </a>
-        <a class="nav-link cursor-pointer accordion-section" data-url="{% url 'simulation_list' %}">
+        <a class="nav-link cursor-pointer accordion-section" data-url="{% url 'simulation_list' %}" href="{% page_url 'simulation_list' %}">
             {% if request.session.language == 'en' %}Saved projects{% else %}Projetos salvos{% endif %}
         </a>
+        <label for="languageSelect" class="sr-only">{% if request.session.language == 'en' %}Language{% else %}Idioma{% endif %}</label>
         <select id="languageSelect" class="form-control px-2" onchange="updateLanguage(this.value)">
             <option class="" value="pt" {% if request.session.language == 'pt' %}selected{% endif %}>Portuguese</option>
             <option value="en" {% if request.session.language == 'en' %}selected{% endif %}>English</option>
         </select>
         
-        <a href="{% url 'custom-logout' %}" class="mt-auto">
+        <a data-saeto-logout href="{% url 'custom-logout' %}" class="mt-auto">
             {% if request.session.language == 'en' %}log-out{% else %}Sair{% endif %}
         </a> 
     </div>

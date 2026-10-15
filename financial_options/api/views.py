@@ -1,14 +1,16 @@
 import copy
 import json
+import logging
 import math
-import traceback
 from urllib import request
 from django.core.exceptions import ValidationError
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import Http404, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 
+from estocasticos.api.inputs import format_bound, read_choice, read_fields, read_number
 from estocasticos.labels import stat_labels
 from estocasticos.use_cases.cadeia_markov_use_case import MAX_MARKOV_STEPS
 from estocasticos.use_cases.financial_options.black_scholes_merton_use_case import BlackScholesMertonUseCase
@@ -17,10 +19,15 @@ from estocasticos.use_cases.financial_options.cox_ross_rubinstein_use_case impor
 from estocasticos.use_cases.financial_options.generalized_black_scholes_merton_use_case import GeneralizedBlackScholesMertonUseCase
 from financial_options.models import FinantialModels, FinantialModelsChoices
 from financial_options.report_html import sanitize_report_html
-from financial_options.report_registry import REGISTRY, REPORT_HTML_FIELDS
+from financial_options.report_registry import (
+    MONTE_CARLO_AMERICAN_LIMITS, MONTE_CARLO_EUROPEAN_LIMITS, REGISTRY, REPORT_HTML_FIELDS,
+)
 from financial_options.use_cases.finite_difference_european import FDMEuropeanUseCase
 from financial_options.use_cases.option_price_use_Case import create_plots, option_price_use_case
 from financial_options.use_cases.option_price_american_use_case import create_american_option_plots, american_option_lsmc
+
+logger = logging.getLogger(__name__)
+
 
 def _initial_data(request, model_type):
     """Screen defaults from the registry; query-string values override them."""
@@ -42,6 +49,9 @@ def _render_screen(request, model_type, extra_context=None):
         # save validation cannot drift apart. Copies, because the registry's dicts
         # live as long as the process and are shared by every request.
         'limits': copy.deepcopy(screen.limits),
+        # The same bounds as text, written the way the server's messages write
+        # them, so a screen can name a limit without rephrasing it.
+        'limit_text': {key: format_bound(value, language) for key, value in screen.limits.items()},
         # The example of the screen, still reachable after a saved project replaced
         # `initial_data`.
         'screen_defaults': copy.deepcopy(screen.defaults),
@@ -227,7 +237,9 @@ def save_financial_model(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
     return JsonResponse({'success': True, 'message': 'Project saved successfully!',
-                         'id': financial_model.id, 'name': financial_model.name})
+                         'id': financial_model.id, 'name': financial_model.name,
+                         'report_url': reverse('view_report', args=[financial_model.id])
+                         if model_type in REGISTRY else None})
 
 
 def black_scholes_merton_view(request):
@@ -511,168 +523,113 @@ def cox_ross_rubinstein_view(request):
 
 
 
+# --- Monte Carlo option screens ---------------------------------------------
+
+# The labels the messages name the fields by, in the order of the forms.
+_MONTE_CARLO_LABELS = {
+    'S0': ('Preço Atual do Ativo (S0)', 'Initial Asset Price (S0)'),
+    'K': ('Preço de Exercício (K)', 'Strike Price (K)'),
+    'T': ('Tempo até o Vencimento (T)', 'Time to Maturity (T)'),
+    'r': ('Taxa de Juros Livre de Risco (r)', 'Risk-Free Rate (r)'),
+    'sigma': ('Volatilidade (sigma)', 'Volatility (sigma)'),
+    'num_simulacoes': ('Número de Simulações', 'Number of Simulations'),
+    'num_passos': ('Número de Passos no Tempo', 'Number of Time Steps'),
+    'option_type': ('Tipo de Opção', 'Option Type'),
+}
+
+
+def _simulation_failed(language):
+    """What a failed simulation says; the cause goes to the log, not to the screen."""
+    return ('An unexpected error occurred during the simulation.' if language == 'en'
+            else 'Ocorreu um erro inesperado durante a simulação.')
+
+
+def _read_option_inputs(data, language, limits):
+    """
+    The inputs both Monte Carlo option screens share, read against `limits`.
+
+    The ranges come from the registry, so the HTML of the screen, this
+    validation and the message the user reads cannot drift apart (plan §10, U6).
+    `num_passos` is read only for the screen that walks the time steps.
+    """
+    label = _MONTE_CARLO_LABELS
+    fields = {
+        'S0': lambda d: read_number(d, 'S0', label['S0'], above=0),
+        'K': lambda d: read_number(d, 'K', label['K'], above=0),
+        'T': lambda d: read_number(d, 'T', label['T'], above=0),
+        'r': lambda d: read_number(d, 'r', label['r'],
+                                   minimum=limits['min_rate'], maximum=limits['max_rate']),
+        'sigma': lambda d: read_number(d, 'sigma', label['sigma'],
+                                       minimum=limits['min_volatility'], maximum=limits['max_volatility']),
+        'num_simulacoes': lambda d: read_number(d, 'num_simulacoes', label['num_simulacoes'],
+                                                minimum=limits['min_simulations'],
+                                                maximum=limits['max_simulations'], integer=True),
+    }
+    if 'max_steps' in limits:
+        fields['num_passos'] = lambda d: read_number(d, 'num_passos', label['num_passos'],
+                                                     minimum=limits['min_steps'],
+                                                     maximum=limits['max_steps'], integer=True)
+    fields['option_type'] = lambda d: read_choice(d, 'option_type', label['option_type'], ('call', 'put'))
+    return read_fields(data, language, fields)
+
+
 def precificar_opcao_view(request):
-    if request.method == 'POST':
-        errors = {}
-        try:
-            S0 = float(request.POST.get('S0'))
-            if S0 <= 0.0:
-                errors['S0'] = 'Preço Atual do Ativo (S0) deve ser maior que 0.'
-        except (ValueError, TypeError):
-            errors['S0'] = 'Preço Atual do Ativo (S0) inválido.'
-
-        try:
-            K = float(request.POST.get('K'))
-            if K <= 0.0:
-                errors['K'] = 'Preço de Exercício (K) deve ser maior que 0.'
-        except (ValueError, TypeError):
-            errors['K'] = 'Preço de Exercício (K) inválido.'
-
-        try:
-            T = float(request.POST.get('T'))
-            if T <= 0.0:
-                errors['T'] = 'Tempo até o Vencimento (T) deve ser maior que 0.'
-        except (ValueError, TypeError):
-            errors['T'] = 'Tempo até o Vencimento (T) inválido.'
-
-        try:
-            r = float(request.POST.get('r'))
-            if not (0.0 <= r <= 100):
-                errors['r'] = 'Taxa de Juros Livre de Risco (r) deve estar entre 0 e 100.'
-        except (ValueError, TypeError):
-            errors['r'] = 'Taxa de Juros Livre de Risco (r) inválida.'
-
-        try:
-            sigma = float(request.POST.get('sigma'))
-            if not (0.1 <= sigma <= 200):
-                errors['sigma'] = 'Volatilidade (sigma) deve estar entre 0.1 e 200.'
-        except (ValueError, TypeError):
-            errors['sigma'] = 'Volatilidade (sigma) inválida.'
-
-        try:
-            num_simulacoes = int(request.POST.get('num_simulacoes'))
-            if not (1000 <= num_simulacoes <= 1000000):
-                errors['num_simulacoes'] = 'Número de Simulações deve estar entre 1.000 e 1.000.000.'
-        except (ValueError, TypeError):
-            errors['num_simulacoes'] = 'Número de Simulações inválido.'
-        
-        # Validação para o novo campo 'option_type'
-        option_type = request.POST.get('option_type')
-        if option_type not in ['put', 'call']:
-            errors['option_type'] = 'Tipo de opção inválido.'
-
-        if errors:
-            return JsonResponse({'errors': errors}, status=400)
-
-        try:
-            # Passa o 'option_type' para a função de cálculo
-            preco_opcao, ST_array, statistics = option_price_use_case(
-                S0, K, T, r, sigma, num_simulacoes, option_type
-            )
-
-            price_plot_base64, distribution_plot_base64 = create_plots(ST_array)
-
-            return JsonResponse({
-                'preco_estimado': f'{preco_opcao:.4f}',
-                'price_plot': price_plot_base64,
-                'distribution_plot': distribution_plot_base64,
-                'stats_descriptive': statistics['descriptive'], 
-                'stats_inferential': statistics['inferential'], 
-            })
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-    else: # GET request
+    if request.method != 'POST':
         return _render_screen(request, FinantialModelsChoices.MONTE_CARLO_EUROPEAN)
 
+    language = request.session.get('language', 'pt')
+    values, errors = _read_option_inputs(request.POST, language, MONTE_CARLO_EUROPEAN_LIMITS)
+    if errors:
+        return JsonResponse({'errors': errors}, status=400)
+
+    try:
+        preco_opcao, ST_array, statistics = option_price_use_case(
+            values['S0'], values['K'], values['T'], values['r'], values['sigma'],
+            values['num_simulacoes'], values['option_type'],
+        )
+        price_plot_base64, distribution_plot_base64 = create_plots(ST_array)
+    except Exception:
+        logger.exception('European Monte Carlo simulation failed')
+        return JsonResponse({'error': _simulation_failed(language)}, status=500)
+
+    # Numbers, not text: the screen formats them in the session language and the
+    # saved run keeps the precision of the simulation.
+    return JsonResponse({
+        'preco_estimado': float(preco_opcao),
+        'price_plot': price_plot_base64,
+        'distribution_plot': distribution_plot_base64,
+        'stats_descriptive': statistics['descriptive'],
+        'stats_inferential': statistics['inferential'],
+    })
+
 def precificar_opcao_americana_view(request):
-    """
-    View to handle the pricing of American options via a web form.
-    """
-    if request.method == 'POST':
-        errors = {}
-        # Capture and validate the data from the form
-        try:
-            S0 = float(request.POST.get('S0'))
-            if S0 <= 0:
-                errors['S0'] = 'Initial Asset Price (S0) must be greater than 0.'
-        except (ValueError, TypeError):
-            errors['S0'] = 'Invalid Initial Asset Price (S0).'
-
-        try:
-            K = float(request.POST.get('K'))
-            if K <= 0:
-                errors['K'] = 'Strike Price (K) must be greater than 0.'
-        except (ValueError, TypeError):
-            errors['K'] = 'Invalid Strike Price (K).'
-
-        try:
-            T = float(request.POST.get('T'))
-            if T <= 0:
-                errors['T'] = 'Time to Maturity (T) must be greater than 0.'
-        except (ValueError, TypeError):
-            errors['T'] = 'Invalid Time to Maturity (T).'
-
-        try:
-            r = float(request.POST.get('r'))
-            if not (0.0 <= r <= 100):
-                errors['r'] = 'Risk-Free Rate (r) must be between 0 and 100.'
-        except (ValueError, TypeError):
-            errors['r'] = 'Invalid Risk-Free Rate (r).'
-
-        try:
-            sigma = float(request.POST.get('sigma'))
-            if not (0.1 <= sigma <= 200):
-                errors['sigma'] = 'Volatility (sigma) must be between 0.1 and 200.'
-        except (ValueError, TypeError):
-            errors['sigma'] = 'Invalid Volatility (sigma).'
-
-        try:
-            num_simulacoes = int(request.POST.get('num_simulacoes'))
-            if not (1000 <= num_simulacoes <= 10000):
-                errors['num_simulacoes'] = 'Number of Simulations must be between 1,000 and 100,000.'
-        except (ValueError, TypeError):
-            errors['num_simulacoes'] = 'Invalid Number of Simulations.'
-            
-        try:
-            num_passos = int(request.POST.get('num_passos'))
-            if not (10 <= num_passos <= 1000):
-                errors['num_passos'] = 'Number of Time Steps must be between 10 and 1,000.'
-        except (ValueError, TypeError):
-            errors['num_passos'] = 'Invalid Number of Time Steps.'
-
-        option_type = request.POST.get('option_type')
-        if option_type not in ['put', 'call']:
-            errors['option_type'] = 'Invalid option type selected.'
-
-        if errors:
-            return JsonResponse({'errors': errors}, status=400)
-
-        try:
-            # Call the calculation function with the validated data
-            option_price, S_paths, boundary, discounted_cashflows = american_option_lsmc(
-                S0, K, T, r, sigma, num_simulacoes, num_passos, option_type
-            )
-            
-            # 2. Gera os gráficos (passando os cashflows)
-            convergence_plot_b64, paths_plot_b64, boundary_plot_b64 = create_american_option_plots(
-                S_paths, boundary, option_type, discounted_cashflows
-            )
-            
-            # Return the results as a JSON response
-            return JsonResponse({
-                            'preco_estimado': f'{option_price:.4f}',
-                            'convergence_plot': convergence_plot_b64, # NOVO
-                            'price_plot': paths_plot_b64,
-                            'exercise_boundary_plot': boundary_plot_b64,
-                        })
-        except Exception as e:
-            # Log the exception for debugging purposes
-            print(f"An error occurred during simulation: {e}")
-            return JsonResponse({'error': 'An unexpected error occurred during the simulation.'}, status=500)
-
-    else: # GET request
+    """Prices an American option by least squares Monte Carlo."""
+    if request.method != 'POST':
         return _render_screen(request, FinantialModelsChoices.MONTE_CARLO_AMERICAN)
+
+    language = request.session.get('language', 'pt')
+    values, errors = _read_option_inputs(request.POST, language, MONTE_CARLO_AMERICAN_LIMITS)
+    if errors:
+        return JsonResponse({'errors': errors}, status=400)
+
+    try:
+        option_price, S_paths, boundary, discounted_cashflows = american_option_lsmc(
+            values['S0'], values['K'], values['T'], values['r'], values['sigma'],
+            values['num_simulacoes'], values['num_passos'], values['option_type'],
+        )
+        convergence_plot_b64, paths_plot_b64, boundary_plot_b64 = create_american_option_plots(
+            S_paths, boundary, values['option_type'], discounted_cashflows
+        )
+    except Exception:
+        logger.exception('American Monte Carlo simulation failed')
+        return JsonResponse({'error': _simulation_failed(language)}, status=500)
+
+    return JsonResponse({
+        'preco_estimado': float(option_price),
+        'convergence_plot': convergence_plot_b64,
+        'price_plot': paths_plot_b64,
+        'exercise_boundary_plot': boundary_plot_b64,
+    })
 
 
 @login_required(login_url='/admin/login/')

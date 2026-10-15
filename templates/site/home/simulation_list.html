@@ -1,3 +1,4 @@
+{% load navigation %}
 <div id="simulations-container" class="container d-flex flex-column align-items-center min-vh-100 py-5">
 
     <h1 class="text-3xl font-bold mb-5 text-dark text-center">
@@ -35,7 +36,7 @@
                                 </a>
                             {% endif %}
                             {% if simulation.can_rerun %}
-                                <a href="#" data-url="{% url 'rerun_simulation' simulation.id %}" class="btn btn-info btn-sm me-2 rerun-btn">
+                                <a data-url="{% url 'rerun_simulation' simulation.id %}" class="btn btn-info btn-sm me-2 rerun-btn" href="{% page_url 'rerun_simulation' simulation.id %}">
                                     {% if request.session.language == 'en' %}Rerun{% else %}Simular Novamente{% endif %}
                                 </a>
                             {% endif %}
@@ -55,7 +56,7 @@
             {% comment %} Previous Page Link {% endcomment %}
             {% if page_obj.has_previous %}
                 <li class="page-item">
-                    <a class="page-link nav-link" href="#" data-url="{% url 'simulation_list' %}?page={{ page_obj.previous_page_number }}">
+                    <a class="page-link nav-link" data-url="{% url 'simulation_list' %}?page={{ page_obj.previous_page_number }}" href="{% page_url 'simulation_list' %}?page={{ page_obj.previous_page_number }}">
                         {% if request.session.language == 'en' %}Previous{% else %}Anterior{% endif %}
                     </a>
                 </li>
@@ -73,7 +74,7 @@
                     </li>
                 {% else %}
                     <li class="page-item">
-                        <a class="page-link nav-link" href="#" data-url="{% url 'simulation_list' %}?page={{ num }}">{{ num }}</a>
+                        <a class="page-link nav-link" data-url="{% url 'simulation_list' %}?page={{ num }}" href="{% page_url 'simulation_list' %}?page={{ num }}">{{ num }}</a>
                     </li>
                 {% endif %}
             {% endfor %}
@@ -81,7 +82,7 @@
             {% comment %} Next Page Link {% endcomment %}
             {% if page_obj.has_next %}
                 <li class="page-item">
-                    <a class="page-link nav-link" href="#" data-url="{% url 'simulation_list' %}?page={{ page_obj.next_page_number }}">
+                    <a class="page-link nav-link" data-url="{% url 'simulation_list' %}?page={{ page_obj.next_page_number }}" href="{% page_url 'simulation_list' %}?page={{ page_obj.next_page_number }}">
                         {% if request.session.language == 'en' %}Next{% else %}Próximo{% endif %}
                     </a>
                 </li>
@@ -216,6 +217,7 @@
             if (userConfirmed) {
                 try {
                     const result = await apiDeleteSimulation(simulationId);
+                    if (container.isConnected === false) return;
                     if (result.status === 'success') {
                         document.getElementById(`simulation-${simulationId}`).remove();
                         console.log(`Simulation ${simulationId} removed from UI.`);
@@ -223,6 +225,7 @@
                         throw new Error(result.message || 'Failed to delete simulation.');
                     }
                 } catch (error) {
+                    if (container.isConnected === false) return;
                     console.error('Error:', error);
                     alert(`Could not delete the simulation: ${error.message}`);
                 }
@@ -253,10 +256,12 @@
                     renameButton.disabled = true;
                     try {
                         const data = await updateSimulationName(simulationId, newName);
+                        if (container.isConnected === false) return;
                         if (data.status !== 'success') throw new Error(data.message || renameError);
                         nameSpan.textContent = data.name;
                         input.value = data.name;
                     } catch (error) {
+                        if (container.isConnected === false) return;
                         console.error('Error updating simulation name:', error);
                         alert(`${renameError} ${error.message}`);
                         input.value = originalName;

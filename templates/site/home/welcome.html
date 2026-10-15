@@ -1,0 +1,8 @@
+{% load static %}
+<div class="container d-flex flex-column justify-content-center align-items-center" style="min-height:60vh">
+    {% if request.session.language == 'en' %}
+    <img style="max-width:100%;height:auto;width:600px" src="{% static 'app_teoria/assets/logoEng2.png' %}" alt="SAETO">
+    {% else %}
+    <img style="max-width:100%;height:auto;width:600px" src="{% static 'app_teoria/assets/logo.png' %}" alt="SAETO">
+    {% endif %}
+</div>
