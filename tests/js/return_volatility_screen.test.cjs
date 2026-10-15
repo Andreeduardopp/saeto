@@ -17,7 +17,6 @@ test('a recovered draft preserves invalid edits, mode, pagination and the last c
     ui.click('usePastedPrices');
     ui.click('calculateButton');
     ui.fire('annualizeToggle', 'change', { target: Object.assign(ui.el('annualizeToggle'), { checked: true }) });
-    ui.type('periodsPerYear', 'invalid');
     ui.mode('manual');
     const input = ui.el('price_1');
     input.value = 'wrong';
@@ -26,14 +25,14 @@ test('a recovered draft preserves invalid edits, mode, pagination and the last c
     data.page = 4;
     data.returnsPage = 3;
     assert.equal(data.priceTexts[0], 'wrong');
-    assert.equal(data.annual.periodsText, 'invalid');
+    assert.equal(data.annual.periodsText, '252');
     assert.equal(data.lastPrices.length, 300);
     assert.equal(data.chart, undefined);
     assert.equal(data.results, undefined);
     const recovered = screenHarness('en', null, data);
     assert.equal(recovered.el('staleBanner').hidden, false);
     assert.equal(recovered.el('saveProjectButton').disabled, true);
-    assert.equal(recovered.el('periodsPerYear').value, 'invalid');
+    assert.equal(recovered.el('periodsPerYear').value, '252');
     assert.equal(recovered.captureDraft().page, 4);
     assert.equal(recovered.captureDraft().returnsPage, 3);
     assert.equal(recovered.captureDraft().priceTexts[0], 'wrong');
@@ -307,7 +306,7 @@ test('annualizing is off until asked for, and then only the annual block is adde
     annualizeOn(ui);
     assert.equal(ui.el('annualFields').hidden, false);
     assert.equal(ui.el('annualBlock').hidden, false);
-    // Daily is suggested with m = 252, written into the field so it can be edited.
+    // Daily is the default frequency, with its fixed m = 252.
     assert.equal(ui.el('annualFrequency').value, 'daily');
     assert.equal(ui.el('periodsPerYear').value, '252');
     assert.equal(ui.el('annualRate').textContent, '43,2764%');
@@ -325,68 +324,20 @@ test('annualizing is off until asked for, and then only the annual block is adde
     assert.match(ui.el('statsNote').textContent, /a anualização aparece no bloco anual/);
 });
 
-test('each frequency suggests its m, and editing m updates only the annual block', () => {
+test('each frequency fixes its own m, read-only', () => {
     const ui = calculatedHandbook();
     annualizeOn(ui);
-    for (const [frequency, periods] of [['weekly', '52'], ['monthly', '12'], ['daily', '252']]) {
+    for (const [frequency, periods] of [['monthly', '12'], ['annual', '1'], ['daily', '252']]) {
         ui.el('annualFrequency').value = frequency;
         ui.fire('annualFrequency', 'change');
         assert.equal(ui.el('periodsPerYear').value, periods);
         assert.notEqual(ui.el('annualRate').textContent, '—');
         assert.match(ui.el('annualMeta').textContent, new RegExp(`m = ${periods} períodos`));
     }
-    // A custom frequency keeps the m in the field and asks the user to write it.
-    ui.el('annualFrequency').value = 'custom';
-    ui.fire('annualFrequency', 'change');
-    assert.equal(ui.el('periodsPerYear').value, '252');
-    assert.equal(ui.focused.id, 'periodsPerYear');
-    ui.type('periodsPerYear', '52');
-    assert.equal(ui.el('annualMeta').textContent,
-        'm = 52 períodos por ano · frequência: personalizada · unidade: anual');
-    assert.equal(ui.el('annualVolatility').textContent, '11,1663%');
     // Only the annual block moved: the series was never recalculated.
     assert.equal(ui.el('volatilityContinuous').textContent, '1,5485%');
     assert.equal(ui.el('staleBanner').hidden, true);
     assert.equal(ui.el('saveProjectButton').disabled, false);
-});
-
-test('an invalid m marks the annual block pending and holds back copy and save', () => {
-    const ui = calculatedHandbook();
-    annualizeOn(ui);
-    for (const [value, message] of [['', /Informe os períodos por ano/],
-                                    ['0', /entre 1 e 100000/],
-                                    ['2,5', /número inteiro/]]) {
-        ui.type('periodsPerYear', value);
-        // While typing, the block is pending but the field says nothing yet.
-        assert.equal(ui.el('annualPending').hidden, false);
-        assert.equal(ui.el('periodsError').hidden, true);
-        assert.equal(ui.el('annualRate').textContent, '—');
-        assert.equal(ui.el('annualVolatility').textContent, '—');
-        // The per-period summary is untouched and still valid.
-        assert.equal(ui.el('volatilityContinuous').textContent, '1,5485%');
-        assert.equal(ui.el('resultsMeta').textContent,
-            'N = 9 preços · n = N − 1 = 8 retornos · unidade: por período');
-        assert.equal(ui.el('copyTableButton').disabled, true);
-        assert.equal(ui.el('saveProjectButton').disabled, true);
-        assert.match(ui.el('outputHint').textContent, /Corrija os períodos por ano/);
-        // Confirming the field is what shows its message.
-        ui.fire('periodsPerYear', 'change');
-        assert.equal(ui.el('periodsError').hidden, false);
-        assert.match(ui.el('periodsError').textContent, message);
-        assert.equal(ui.el('periodsPerYear').attributes['aria-invalid'], 'true');
-        // A click that reaches the handler anyway sends nothing and points at m.
-        ui.fire('saveProjectButton', 'click');
-        ui.fire('copyTableButton', 'click');
-        assert.deepEqual(ui.saves, []);
-        assert.deepEqual(ui.copies, []);
-        assert.equal(ui.focused.id, 'periodsPerYear');
-    }
-    ui.type('periodsPerYear', '252');
-    assert.equal(ui.el('annualPending').hidden, true);
-    assert.equal(ui.el('periodsError').hidden, true);
-    assert.equal(ui.el('annualRate').textContent, '43,2764%');
-    assert.equal(ui.el('saveProjectButton').disabled, false);
-    assert.equal(ui.el('outputHint').hidden, true);
 });
 
 test('switching the option off leaves the per-period results and comes back to the last m', () => {
@@ -394,7 +345,6 @@ test('switching the option off leaves the per-period results and comes back to t
     annualizeOn(ui);
     ui.el('annualFrequency').value = 'monthly';
     ui.fire('annualFrequency', 'change');
-    ui.type('periodsPerYear', '13');
     const monthlyRate = ui.el('annualRate').textContent;
     assert.notEqual(monthlyRate, '—');
 
@@ -411,7 +361,7 @@ test('switching the option off leaves the per-period results and comes back to t
     // Back on: the last valid configuration of this analysis, not the default.
     annualizeOn(ui);
     assert.equal(ui.el('annualFrequency').value, 'monthly');
-    assert.equal(ui.el('periodsPerYear').value, '13');
+    assert.equal(ui.el('periodsPerYear').value, '12');
     assert.equal(ui.el('annualRate').textContent, monthlyRate);
 });
 
@@ -441,10 +391,6 @@ test('the annualized run is what gets saved and copied, in either language', () 
     en.click('copyTableButton');
     const copied = copiedRows(en.copies[0]);
     assert.deepEqual(copied[copied.length - 1], ['Annual volatility', '', '', '24.5816%']);
-    en.type('periodsPerYear', '0');
-    assert.match(en.el('outputHint').textContent, /Fix the periods per year/);
-    en.fire('periodsPerYear', 'change');
-    assert.match(en.el('periodsError').textContent, /between 1 and 100000/);
 });
 
 test('annualizing before calculating, and a new series, keep the block honest', () => {
@@ -471,20 +417,20 @@ test('annualizing before calculating, and a new series, keep the block honest', 
 });
 
 test('a project saved with an annualization opens with it, and one without it does not', () => {
-    const saved = { periods: 3, prices: [10, 12.5, 11], frequency: 'weekly', periodsPerYear: 52 };
+    const saved = { periods: 3, prices: [10, 12.5, 11], frequency: 'monthly', periodsPerYear: 12 };
     const ui = screenHarness('pt', saved);
     assert.equal(ui.el('annualizeToggle').checked, true);
     assert.equal(ui.el('annualFields').hidden, false);
-    assert.equal(ui.el('annualFrequency').value, 'weekly');
-    assert.equal(ui.el('periodsPerYear').value, '52');
+    assert.equal(ui.el('annualFrequency').value, 'monthly');
+    assert.equal(ui.el('periodsPerYear').value, '12');
     // Nothing is annualized before this project is calculated again.
     assert.equal(ui.el('annualBlock').hidden, true);
     ui.click('calculateButton');
     assert.equal(ui.el('annualBlock').hidden, false);
-    assert.match(ui.el('annualMeta').textContent, /m = 52 períodos por ano · frequência: semanal/);
+    assert.match(ui.el('annualMeta').textContent, /m = 12 períodos por ano · frequência: mensal/);
     ui.click('saveProjectButton');
-    assert.equal(ui.saves[0].parameters.periodsPerYear, 52);
-    assert.equal(ui.saves[0].parameters.frequency, 'weekly');
+    assert.equal(ui.saves[0].parameters.periodsPerYear, 12);
+    assert.equal(ui.saves[0].parameters.frequency, 'monthly');
 
     // A project saved before the option existed opens with it switched off.
     const old = screenHarness('pt', { periods: 3, prices: [10, 12.5, 11] });
@@ -494,20 +440,23 @@ test('a project saved with an annualization opens with it, and one without it do
     old.click('saveProjectButton');
     assert.equal('periodsPerYear' in old.saves[0].parameters, false);
 
-    // An m with a frequency the screen does not offer is shown as a custom one.
-    const odd = screenHarness('pt', { periods: 3, prices: [10, 12.5, 11], frequency: 'hourly', periodsPerYear: 7 });
-    assert.equal(odd.el('annualFrequency').value, 'custom');
-    assert.equal(odd.el('periodsPerYear').value, '7');
+    // A frequency the screen no longer offers (saved before this change) keeps
+    // its own saved m and shows its own name, not one of the current three.
+    const odd = screenHarness('pt', { periods: 3, prices: [10, 12.5, 11], frequency: 'weekly', periodsPerYear: 52 });
+    assert.equal(odd.el('periodsPerYear').value, '52');
+    odd.click('calculateButton');
+    assert.match(odd.el('annualMeta').textContent, /frequência: weekly/);
 });
 
 test('an annualization that leaves the representable range says so instead of showing it', () => {
     const ui = screenHarness();
+    // At m = 252 (daily, the largest of the three), a single huge jump already
+    // overflows: no need to type an m the screen no longer lets the user set.
     ui.mode('paste');
     ui.paste(['1', '1000000', '1000000'].join('\n'));
     ui.click('usePastedPrices');
     ui.click('calculateButton');
     annualizeOn(ui);
-    ui.type('periodsPerYear', '100000');
     assert.equal(ui.el('annualRate').textContent, '—');
     assert.equal(ui.el('annualVolatility').textContent, '—');
     assert.match(ui.el('annualPending').textContent, /não produz um número representável/);
@@ -515,7 +464,9 @@ test('an annualization that leaves the representable range says so instead of sh
     assert.equal(ui.el('saveProjectButton').disabled, true);
     // The per-period results of this series are still there and still valid.
     assert.notEqual(ui.el('volatilityContinuous').textContent, '—');
-    ui.type('periodsPerYear', '1');
+    // A smaller m (annual, the smallest) brings the annual block back.
+    ui.el('annualFrequency').value = 'annual';
+    ui.fire('annualFrequency', 'change');
     assert.notEqual(ui.el('annualRate').textContent, '—');
     assert.equal(ui.el('annualPending').hidden, true);
     assert.equal(ui.el('saveProjectButton').disabled, false);

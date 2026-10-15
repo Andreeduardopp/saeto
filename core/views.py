@@ -16,6 +16,8 @@ from financial_options.models import FinantialModels
 
 
 def pagina_inicial(request):
+    if request.user.is_authenticated:
+        return redirect("/home/")
     return render(request, "admin/login.html")
 
 def perfil_view(request):

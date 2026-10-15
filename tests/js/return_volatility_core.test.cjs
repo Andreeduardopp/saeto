@@ -235,13 +235,13 @@ test('the periods per year (m) field takes a whole number inside its own range',
     assert.deepEqual(core.parseCount('252', { min: 3, max: 1000 }), { value: 252 });
 });
 
-test('each frequency suggests its usual m, and a custom one suggests none', () => {
-    assert.deepEqual(core.PERIODS_PER_YEAR, { daily: 252, weekly: 52, monthly: 12, custom: null });
-    assert.deepEqual(core.FREQUENCIES, ['daily', 'weekly', 'monthly', 'custom']);
+test('each frequency fixes its own m', () => {
+    assert.deepEqual(core.PERIODS_PER_YEAR, { daily: 252, monthly: 12, annual: 1 });
+    assert.deepEqual(core.FREQUENCIES, ['daily', 'monthly', 'annual']);
     assert.equal(core.suggestedPeriods('daily'), 252);
-    assert.equal(core.suggestedPeriods('weekly'), 52);
     assert.equal(core.suggestedPeriods('monthly'), 12);
-    assert.equal(core.suggestedPeriods('custom'), null);
+    assert.equal(core.suggestedPeriods('annual'), 1);
+    // A frequency not among the three the screen offers has no m to suggest.
     assert.equal(core.suggestedPeriods('hourly'), null);
 });
 
@@ -265,7 +265,7 @@ test('the nine prices of the handbook annualize to 43,2764% and 24,5816% with m 
     close(annual.annual_volatility_continuous, Math.sqrt(252) * run.volatility_continuous);
 });
 
-test('annualizing is a change of unit: weekly, monthly and a constant series', () => {
+test('annualizing is a change of unit: several values of m and a constant series', () => {
     const run = core.computeReturns([100, 105, 98, 110, 107.5]);
     for (const m of [12, 52, 252, 1]) {
         const annual = core.annualize(run, m).value;

@@ -334,17 +334,17 @@ MONTE_CARLO_AMERICAN_LIMITS = {
 
 # The screen, the restore and this validation share one size rule (plan §3): the
 # feedback asks for at least 300 prices, and 1,000 is the explicit limit.
-# `periods_per_year` is the m of the optional annualization: a convention the user
-# picks (252, 52, 12 or their own), never a count of the prices in the sample. The
-# cap keeps m a plausible frequency; minute data of a trading year is near 98,000.
+# `periods_per_year` is the m of the optional annualization: a convention fixed by
+# the frequency the user picks (252, 12 or 1), never a count of the prices in the
+# sample. The wide range still guards a save sent directly to the API, not just the
+# screen's three options.
 RETURN_VOLATILITY_LIMITS = {
     'min_prices': 3, 'max_prices': 1000,
     'min_periods_per_year': 1, 'max_periods_per_year': 100000,
 }
 
-# The frequencies the screen offers and the m each one suggests. `custom` carries
-# no suggestion: the user writes m.
-RETURN_VOLATILITY_FREQUENCIES = {'daily': 252, 'weekly': 52, 'monthly': 12, 'custom': None}
+# The frequencies the screen offers and the m each one fixes.
+RETURN_VOLATILITY_FREQUENCIES = {'daily': 252, 'monthly': 12, 'annual': 1}
 
 # Saved by the screen only when the run was annualized, so a project saved before
 # this option existed re-runs and is reported with no annualization attributed to it.
@@ -1059,10 +1059,8 @@ REGISTRY: dict[str, ModelSpec] = {
                    'frequency': 'Price frequency', 'periodsPerYear': 'Periods per year (m)'},
         },
         value_labels={
-            'pt': {'frequency': {'daily': 'Diária', 'weekly': 'Semanal',
-                                 'monthly': 'Mensal', 'custom': 'Personalizada'}},
-            'en': {'frequency': {'daily': 'Daily', 'weekly': 'Weekly',
-                                 'monthly': 'Monthly', 'custom': 'Custom'}},
+            'pt': {'frequency': {'daily': 'Diária', 'monthly': 'Mensal', 'annual': 'Anual'}},
+            'en': {'frequency': {'daily': 'Daily', 'monthly': 'Monthly', 'annual': 'Annual'}},
         },
         table_params=('prices',),
         limits=RETURN_VOLATILITY_LIMITS,

@@ -25,10 +25,10 @@
     const PAGE_SIZES = [25, 50, 100];
     const DEFAULT_PAGE_SIZE = 25;
 
-    // Annualization (plan §6): m is the number of periods per year, a convention
-    // chosen by the user, not a count of the prices in the sample. The suggestions
-    // are the usual ones; "custom" means the user writes m.
-    const PERIODS_PER_YEAR = { daily: 252, weekly: 52, monthly: 12, custom: null };
+    // Annualization (plan §6): m is the number of periods per year, fixed by the
+    // frequency of the prices the user picks. 252, 12 and 1 are the usual
+    // conventions, not a count of the prices in the sample.
+    const PERIODS_PER_YEAR = { daily: 252, monthly: 12, annual: 1 };
     const FREQUENCIES = Object.keys(PERIODS_PER_YEAR);
     const MIN_PERIODS_PER_YEAR = 1;
     // Minute data of a trading year is around 98,000 periods: the cap keeps m a
@@ -122,7 +122,7 @@
         };
     }
 
-    /** The m usually used with a frequency, or null when the user writes it. */
+    /** The m fixed by a frequency, or null when the frequency is not one of the screen's. */
     function suggestedPeriods(frequency) {
         const suggestion = PERIODS_PER_YEAR[frequency];
         return suggestion === undefined ? null : suggestion;

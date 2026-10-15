@@ -768,14 +768,24 @@ class ReturnVolatilityTests(LoggedInTestCase):
         self.assertIn('not the accumulated return of the window',
                       response.context['tables'][0]['note'])
 
-    def test_a_weekly_annualization_keeps_its_own_m_and_label(self):
-        simulation = self.annualized_simulation(periods_per_year=52, frequency='weekly')
+    def test_a_monthly_annualization_keeps_its_own_m_and_label(self):
+        simulation = self.annualized_simulation(periods_per_year=12, frequency='monthly')
         self.set_language('pt')
         response = self.client.get(reverse('view_report', args=[simulation.id]))
-        self.assertEqual(response.context['parameters']['Frequência dos preços'], 'Semanal')
-        self.assertEqual(response.context['results']['Períodos por ano (m)'], 52)
-        self.assertEqual(response.context['results']['Volatilidade anual (contínua)'], '11,1663%')
-        self.assertIn('m = 52 períodos por ano', response.context['tables'][0]['note'])
+        self.assertEqual(response.context['parameters']['Frequência dos preços'], 'Mensal')
+        self.assertEqual(response.context['results']['Períodos por ano (m)'], 12)
+        self.assertEqual(response.context['results']['Volatilidade anual (contínua)'], '5,3641%')
+        self.assertIn('m = 12 períodos por ano', response.context['tables'][0]['note'])
+
+    def test_an_annual_frequency_leaves_m_1_and_matches_the_per_period_values(self):
+        simulation = self.annualized_simulation(periods_per_year=1, frequency='annual')
+        self.set_language('pt')
+        response = self.client.get(reverse('view_report', args=[simulation.id]))
+        self.assertEqual(response.context['parameters']['Frequência dos preços'], 'Anual')
+        self.assertEqual(response.context['results']['Períodos por ano (m)'], 1)
+        # m = 1 leaves the annual block equal to the per-period one (√1 = 1).
+        self.assertEqual(response.context['results']['Volatilidade anual (contínua)'],
+                          response.context['results']['Volatilidade contínua (por período)'])
 
     def test_a_project_saved_without_annualization_is_not_reported_as_annualized(self):
         """A project saved before the option existed re-runs and reports as it was."""
@@ -794,21 +804,21 @@ class ReturnVolatilityTests(LoggedInTestCase):
         self.assertContains(rerun, 'id="annualizeToggle"')
 
     def test_rerun_opens_the_project_with_the_annualization_it_was_saved_with(self):
-        simulation = self.annualized_simulation(periods_per_year=52, frequency='weekly')
+        simulation = self.annualized_simulation(periods_per_year=1, frequency='annual')
         response = self.client.get(reverse('rerun_simulation', args=[simulation.id]))
         initial = response.context['initial_data']
-        self.assertEqual(initial['periodsPerYear'], 52)
-        self.assertEqual(initial['frequency'], 'weekly')
+        self.assertEqual(initial['periodsPerYear'], 1)
+        self.assertEqual(initial['frequency'], 'annual')
         self.assertEqual(initial['prices'], HANDBOOK_PRICES)
         # The screen reads them from this block to open the option already on.
-        self.assertContains(response, '"periodsPerYear": 52')
+        self.assertContains(response, '"periodsPerYear": 1')
 
     def test_screen_offers_the_optional_annualization_with_its_formulas(self):
         for language, texts in (
             ('pt', ('2. Configuração', 'Anualizar os resultados (opcional)',
                     'Frequência dos preços', 'Períodos por ano (m)',
-                    'Diária (252 períodos por ano)', 'Semanal (52 períodos por ano)',
-                    'Mensal (12 períodos por ano)', 'Personalizada',
+                    'Diária (252 períodos por ano)',
+                    'Mensal (12 períodos por ano)', 'Anual (1 período por ano)',
                     'convenções usuais, não a contagem de preços',
                     'Resultados anuais',
                     'Taxa anual equivalente a partir do retorno logarítmico médio',
@@ -819,8 +829,8 @@ class ReturnVolatilityTests(LoggedInTestCase):
                     'não uma previsão garantida')),
             ('en', ('2. Settings', 'Annualize the results (optional)',
                     'Price frequency', 'Periods per year (m)',
-                    'Daily (252 periods per year)', 'Weekly (52 periods per year)',
-                    'Monthly (12 periods per year)', 'Custom',
+                    'Daily (252 periods per year)',
+                    'Monthly (12 periods per year)', 'Annual (1 period per year)',
                     'usual conventions, not a count of the prices',
                     'Annual results',
                     'Equivalent annual rate from the mean log return',
@@ -1011,7 +1021,7 @@ class ReturnVolatilitySaveTests(LoggedInTestCase):
         del payload['results']['annual_rate_equivalent']
         self.assertEqual(self.post(payload).status_code, 400)
 
-        for frequency in ('hourly', '', [], 7):
+        for frequency in ('hourly', 'weekly', 'custom', '', [], 7):
             with self.subTest(frequency=frequency):
                 payload = return_volatility_payload(self.series(5), periods_per_year=252,
                                                     frequency=frequency)

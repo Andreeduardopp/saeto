@@ -572,15 +572,14 @@
                 </label>
                 <select id="annualFrequency" class="form-control" aria-describedby="frequencyHint">
                     <option value="daily">{% if request.session.language == 'en' %}Daily (252 periods per year){% else %}Diária (252 períodos por ano){% endif %}</option>
-                    <option value="weekly">{% if request.session.language == 'en' %}Weekly (52 periods per year){% else %}Semanal (52 períodos por ano){% endif %}</option>
                     <option value="monthly">{% if request.session.language == 'en' %}Monthly (12 periods per year){% else %}Mensal (12 períodos por ano){% endif %}</option>
-                    <option value="custom">{% if request.session.language == 'en' %}Custom{% else %}Personalizada{% endif %}</option>
+                    <option value="annual">{% if request.session.language == 'en' %}Annual (1 period per year){% else %}Anual (1 período por ano){% endif %}</option>
                 </select>
                 <p class="rv-hint" id="frequencyHint">
                     {% if request.session.language == 'en' %}
-                    252, 52 and 12 are the usual conventions, not a count of the prices in your sample. You can edit m.
+                    252, 12 and 1 are the usual conventions, not a count of the prices in your sample.
                     {% else %}
-                    252, 52 e 12 são as convenções usuais, não a contagem de preços da sua amostra. Você pode editar m.
+                    252, 12 e 1 são as convenções usuais, não a contagem de preços da sua amostra.
                     {% endif %}
                 </p>
             </div>
@@ -590,7 +589,7 @@
                 </label>
                 <input type="number" id="periodsPerYear" class="form-control" inputmode="numeric"
                        min="{{ limits.min_periods_per_year }}" max="{{ limits.max_periods_per_year }}"
-                       step="1" autocomplete="off" aria-describedby="periodsHint periodsError">
+                       step="1" autocomplete="off" readonly aria-readonly="true" aria-describedby="periodsHint periodsError">
                 <p class="rv-hint" id="periodsHint"></p>
                 <p class="rv-error" id="periodsError" role="alert" hidden></p>
             </div>
@@ -861,14 +860,13 @@
             PERIODS_NOT_INTEGER: 'Os períodos por ano (m) devem ser um número inteiro.',
             PERIODS_RANGE: `Os períodos por ano (m) devem estar entre ${annualLimits.min} e ${annualLimits.max}.`,
             ANNUAL_NOT_FINITE: 'A anualização destes retornos com este m não produz um número representável. Reduza m ou revise a série.',
-            periodsHint: `Sugestões: 252 (diária), 52 (semanal) e 12 (mensal). De ${annualLimits.min} a ${annualLimits.max}.`,
-            annualPending: 'Resultados anuais pendentes: corrija os períodos por ano (m) para atualizá-los. Os valores por período acima continuam válidos.',
-            annualBlocked: 'Corrija os períodos por ano (m) para copiar ou salvar com a anualização.',
+            periodsHint: 'Definido automaticamente pela frequência escolhida: 252 (diária), 12 (mensal) ou 1 (anual).',
+            annualPending: 'Resultados anuais pendentes: escolha outra frequência para atualizá-los. Os valores por período acima continuam válidos.',
+            annualBlocked: 'Escolha outra frequência para copiar ou salvar com a anualização.',
             annualMeta: (periods, frequency) => `m = ${periods} períodos por ano · frequência: ${frequency} · unidade: anual`,
             frequencyDaily: 'diária',
-            frequencyWeekly: 'semanal',
             frequencyMonthly: 'mensal',
-            frequencyCustom: 'personalizada',
+            frequencyAnnual: 'anual',
             annualRateLabel: 'Taxa anual equivalente',
             annualVolatilityLabel: 'Volatilidade anual',
             periodsPerYearLabel: 'Períodos por ano (m)',
@@ -983,14 +981,13 @@
             PERIODS_NOT_INTEGER: 'The periods per year (m) must be a whole number.',
             PERIODS_RANGE: `The periods per year (m) must be between ${annualLimits.min} and ${annualLimits.max}.`,
             ANNUAL_NOT_FINITE: 'Annualizing these returns with this m does not give a number that can be represented. Lower m or review the series.',
-            periodsHint: `Suggestions: 252 (daily), 52 (weekly) and 12 (monthly). From ${annualLimits.min} to ${annualLimits.max}.`,
-            annualPending: 'Annual results pending: fix the periods per year (m) to update them. The per-period values above are still valid.',
-            annualBlocked: 'Fix the periods per year (m) to copy or save with the annualization.',
+            periodsHint: 'Set automatically by the chosen frequency: 252 (daily), 12 (monthly) or 1 (annual).',
+            annualPending: 'Annual results pending: choose another frequency to update them. The per-period values above are still valid.',
+            annualBlocked: 'Choose another frequency to copy or save with the annualization.',
             annualMeta: (periods, frequency) => `m = ${periods} periods per year · frequency: ${frequency} · unit: annual`,
             frequencyDaily: 'daily',
-            frequencyWeekly: 'weekly',
             frequencyMonthly: 'monthly',
-            frequencyCustom: 'custom',
+            frequencyAnnual: 'annual',
             annualRateLabel: 'Equivalent annual rate',
             annualVolatilityLabel: 'Annual volatility',
             periodsPerYearLabel: 'Periods per year (m)',
@@ -1423,16 +1420,15 @@
     }
 
     // --- Optional annualization -------------------------------------------------
-    // m is a convention of the user, not a property of the series: switching the
-    // option on or editing m recomputes only this block, with no new calculation of
+    // m is fixed by the frequency the user picks, not a property of the series:
+    // choosing a frequency recomputes only this block, with no new calculation of
     // the prices and no invalidation of the per-period results (plan §6).
 
-    const FREQUENCY_LABELS = {
-        daily: 'frequencyDaily', weekly: 'frequencyWeekly',
-        monthly: 'frequencyMonthly', custom: 'frequencyCustom',
-    };
+    const FREQUENCY_LABELS = { daily: 'frequencyDaily', monthly: 'frequencyMonthly', annual: 'frequencyAnnual' };
 
-    const frequencyLabel = (frequency) => t[FREQUENCY_LABELS[frequency] || 'frequencyCustom'];
+    // A frequency from before this screen only offered three (e.g. a project saved
+    // with "weekly") has no label to translate: its own saved name is shown as is.
+    const frequencyLabel = (frequency) => FREQUENCY_LABELS[frequency] ? t[FREQUENCY_LABELS[frequency]] : frequency;
 
     /** The annualization of a run with the confirmed m: `{value}`, `{code}` or null. */
     function annualFor(run) {
@@ -2400,23 +2396,10 @@
 
     frequencySelect.addEventListener('change', () => {
         state.annual.frequency = frequencySelect.value;
-        // 252, 52 and 12 are suggestions, written into the field so they can be edited.
-        const suggestion = core.suggestedPeriods(state.annual.frequency);
-        if (suggestion !== null) {
-            periodsInput.value = String(suggestion);
-        }
+        // 252, 12 and 1 are fixed by the frequency: the field is read-only.
+        periodsInput.value = String(core.suggestedPeriods(state.annual.frequency));
         confirmAnnual({ show: false });
-        if (suggestion === null) {
-            periodsInput.focus();   // a custom frequency is the user's own m
-            periodsInput.select();
-        }
     });
-
-    // Editing m updates the annual results only, as soon as the field holds a whole
-    // number in range; the per-period results and the series stay as they are.
-    periodsInput.addEventListener('input', () => confirmAnnual({ show: false }));
-    periodsInput.addEventListener('change', () => confirmAnnual({ show: true }));
-    periodsInput.addEventListener('blur', () => confirmAnnual({ show: true }));
 
     screen.querySelectorAll('input[name="dataMode"]').forEach(radio => {
         radio.addEventListener('change', () => {
@@ -2702,8 +2685,9 @@
         const savedPeriods = core.parsePeriodsPerYear(initialData.periodsPerYear, annualLimits);
         if (!savedPeriods.code) {
             state.annual.on = true;
-            state.annual.frequency = core.FREQUENCIES.includes(initialData.frequency)
-                ? initialData.frequency : 'custom';
+            // A frequency this screen no longer offers (saved before this change)
+            // keeps its own name and m instead of being folded into one of the three.
+            state.annual.frequency = initialData.frequency || DEFAULT_FREQUENCY;
             periodsInput.value = String(savedPeriods.value);
         } else {
             periodsInput.value = state.annual.last.periodsText;
